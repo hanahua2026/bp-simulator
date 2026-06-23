@@ -125,7 +125,7 @@ const SKILL_LIST = [
     {id:16,name:"炫光贝",img:"xgb.png"},
     {id:17,name:"酸液贝",img:"syb.png"},
     {id:18,name:"轰轰贝",img:"hhb.png"},
-    {id:19,name:"振奋音贝",img:"zfby.png"},
+    {id:19,name:"振奋音贝",img:"zfyb.png"},
     {id:20,name:"强击贝",img:"qjb.png"},
     {id:21,name:"旋风贝",img:"xfb.png"},
     {id:22,name:"雾炮贝",img:"wpb.png"},
