@@ -37,7 +37,7 @@ const ROLE_LIST = [
     {id:9,name:"麦哲伦",img:"mzl.png"},
     {id:10,name:"女帝",img:"nd.png"},
     {id:11,name:"青雉",img:"qz.png"},
-    {id:12,name:"老沙",img:"ls.png"},
+    {id:12,name:"沙鳄鱼",img:"sey.png"},
     {id:13,name:"伊娃科夫",img:"ywkf.png"},
     {id:14,name:"鹰眼",img:"yy.png"},
     {id:15,name:"战国",img:"zg.png"},
@@ -107,16 +107,34 @@ const ROLE_LIST = [
 
 // 贝壳能力池
 const SKILL_LIST = [
-    {id:1,name:"德雷克",img:"dlk.png"},
-    {id:2,name:"弗兰奇",img:"flq.png"},
-    {id:3,name:"盖蒙",img:"gm.png"},
-    {id:4,name:"克里克",img:"klk.png"},
-    {id:5,name:"麦哲伦",img:"mzl.png"},
-    {id:6,name:"全周日",img:"qzr.png"},
-    {id:7,name:"索隆",img:"sl.png"},
-    {id:8,name:"瓦帕",img:"wp.png"},
-    {id:9,name:"霸王色",img:"bws.png"},
-    {id:10,name:"见闻色",img:"jws.png"}
+    {id:1,name:"霸王色",img:"bws.png"},
+    {id:2,name:"武装色",img:"wzs.png"},
+    {id:3,name:"见闻色",img:"jws.png"},
+    {id:4,name:"闪光贝",img:"sgb.png"},
+    {id:5,name:"喷风贝",img:"pfb.png"},
+    {id:6,name:"斩击贝",img:"zjb.png"},
+    {id:7,name:"雷光贝",img:"lgb.png"},
+    {id:8,name:"烈焰贝",img:"lyb.png"},
+    {id:9,name:"疾风贝",img:"jfb.png"},
+    {id:10,name:"助力音贝",img:"zlyb.png"},
+    {id:11,name:"鼓舞音贝",img:"gwyb.png"},
+    {id:12,name:"冲击贝",img:"cjb.png"},
+    {id:13,name:"影像贝",img:"yxb.png"},
+    {id:14,name:"护体炎贝",img:"htyb.png"},
+    {id:15,name:"爆炎贝",img:"byb.png"},
+    {id:16,name:"炫光贝",img:"xgb.png"},
+    {id:17,name:"酸液贝",img:"syb.png"},
+    {id:18,name:"轰轰贝",img:"hhb.png"},
+    {id:19,name:"振奋音贝",img:"zfby.png"},
+    {id:20,name:"强击贝",img:"qjb.png"},
+    {id:21,name:"旋风贝",img:"xfb.png"},
+    {id:22,name:"雾炮贝",img:"wpb.png"},
+    {id:23,name:"冻冻贝",img:"ddb.png"},
+    {id:24,name:"斥空贝",img:"ckb.png"},
+    {id:25,name:"冷雾贝",img:"lwb.png"},
+    {id:26,name:"瓦斯贝",img:"wsb.png"},
+    {id:27,name:"球云贝",img:"qyb.png"},
+    {id:28,name:"震级贝",img:"zhenjibei.png"}
 ]
 // 援护池（红蓝可重复选取，单方内部不可重复）
 const SUPPORT_LIST = [
@@ -198,7 +216,24 @@ const SUPPORT_LIST = [
     {id:75,name:"小红发",img:"xhf.png"},
     {id:76,name:"拉杰",img:"lj.png"},
     {id:77,name:"大剑",img:"dj.png"},
-    {id:78,name:"斧头",img:"ft.png"}
+    {id:78,name:"斧头",img:"ft.png"},
+    {id:76,name:"强高",img:"qg.png"},
+    {id:77,name:"帕迪",img:"pd.png"},
+    {id:78,name:"克比",img:"kb.png"},
+    {id:79,name:"卓夫",img:"zf.png"},
+    {id:80,name:"拉邦",img:"lb2.png"},
+    {id:81,name:"功夫海牛",img:"gfhn.png"},
+    {id:82,name:"古雷娃",img:"glw.png"},
+    {id:83,name:"涅槃",img:"np.png"},
+    {id:84,name:"和平主义者",img:"hpzyz.png"},
+    {id:85,name:"阿悟",img:"aw.png"},
+    {id:86,name:"拉斐特",img:"lft.png"},
+    {id:87,name:"科尼丝",img:"kns.png"},
+    {id:88,name:"罗拉",img:"ll.png"},
+    {id:89,name:"伊格拉姆",img:"yglm.png"},
+    {id:90,name:"斯潘达姆",img:"spdm.png"},
+    {id:91,name:"摩根",img:"mg.png"},
+    {id:92,name:"里奇",img:"lq.png"}
 ];
 
 const SUPPORT_MAX_NUM = 4;
