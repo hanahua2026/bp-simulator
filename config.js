@@ -204,3 +204,7 @@ const SUPPORT_LIST = [
 const SUPPORT_MAX_NUM = 4;
 // 单轮限时20秒
 const COUNTDOWN_SEC = 20;
+// 蓝方全局已用援护（跨对局）
+const BLUE_USED_SUPPORT = [];
+// 红方全局已用援护（跨对局）
+const RED_USED_SUPPORT = [];
