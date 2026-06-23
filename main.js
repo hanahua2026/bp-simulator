@@ -35,6 +35,10 @@ const redCol = document.getElementById("redCol");
 
 let selectedJoinRole = "";
 
+// ====================== 全局援护禁用变量 ======================
+let blueUsedSupportGlobal = [];
+let redUsedSupportGlobal = [];
+
 // ====================== 房间面板逻辑 ======================
 createRoomBtn.onclick = () => {
     createForm.style.display = "block";
@@ -249,6 +253,8 @@ function receiveSync(state) {
     blueSupport = state.blueSupport;
     redSupport = state.redSupport;
     supportPhase = state.supportPhase;
+    blueUsedSupportGlobal = state.blueUsedSupportGlobal || [];
+    redUsedSupportGlobal = state.redUsedSupportGlobal || [];
     refreshAll();
 }
 
@@ -272,7 +278,8 @@ function syncState() {
             matchType, currentRound, maxRound, globalUsedRoleIds,
             battleStart, roleStep, skillStep,
             usedRoleIds, usedSkillIds, bannedSkillIds,
-            blueRole, redRole, blueSupport, redSupport, supportPhase
+            blueRole, redRole, blueSupport, redSupport, supportPhase,
+            blueUsedSupportGlobal, redUsedSupportGlobal
         }
     });
 }
@@ -371,20 +378,22 @@ function autoRandomPick() {
     } else if (supportPhase === 1) {
         while (redSupport.length < SUPPORT_LIMIT) {
             const all = [...blueRole.map(x => x.role.id), ...redRole.map(x => x.role.id)];
-            const can = SUPPORT_POOL.filter(t => !redSupport.includes(t.id) && !all.includes(t.id));
+            const can = SUPPORT_POOL.filter(t => !redSupport.includes(t.id) && !all.includes(t.id) && !redUsedSupportGlobal.includes(t.id));
             if (!can.length) break;
             const rnd = can[Math.floor(Math.random() * can.length)];
             redSupport.push(rnd.id);
+            if (!redUsedSupportGlobal.includes(rnd.id)) redUsedSupportGlobal.push(rnd.id);
             redSupportWrap.appendChild(makeSupportCard(rnd));
         }
         refreshAll(); supportPhase = 2; refreshAll(); startTimer();
     } else if (supportPhase === 2) {
         while (blueSupport.length < SUPPORT_LIMIT) {
             const all = [...blueRole.map(x => x.role.id), ...redRole.map(x => x.role.id)];
-            const can = SUPPORT_POOL.filter(t => !blueSupport.includes(t.id) && !all.includes(t.id));
+            const can = SUPPORT_POOL.filter(t => !blueSupport.includes(t.id) && !all.includes(t.id) && !blueUsedSupportGlobal.includes(t.id));
             if (!can.length) break;
             const rnd = can[Math.floor(Math.random() * can.length)];
             blueSupport.push(rnd.id);
+            if (!blueUsedSupportGlobal.includes(rnd.id)) blueUsedSupportGlobal.push(rnd.id);
             blueSupportWrap.appendChild(makeSupportCard(rnd));
         }
         refreshAll(); clearTimer(); finishCurrentRound();
@@ -402,7 +411,11 @@ function renderPool() {
     const allPicked = [...blueRole.map(x => x.role.id), ...redRole.map(x => x.role.id)];
     if (stage.includes("角色BP")) { list = ROLE_POOL; used = [...usedRoleIds, ...globalUsedRoleIds]; }
     else if (stage.includes("贝壳能力BP")) { list = SKILL_POOL; used = usedSkillIds; }
-    else { list = SUPPORT_POOL; if (supportPhase === 1) used = [...redSupport, ...allPicked]; if (supportPhase === 2) used = [...blueSupport, ...allPicked]; }
+    else {
+        list = SUPPORT_POOL;
+        if (supportPhase === 1) used = [...redSupport, ...allPicked, ...redUsedSupportGlobal];
+        if (supportPhase === 2) used = [...blueSupport, ...allPicked, ...blueUsedSupportGlobal];
+    }
     list.forEach(item => {
         const div = document.createElement("div");
         div.className = "pool-card";
@@ -423,8 +436,8 @@ function setPreSelect(item) {
     if (stage.includes("角色BP")) { if (globalUsedRoleIds.includes(item.id) || usedRoleIds.includes(item.id)) return; }
     else if (stage.includes("贝壳能力BP")) { if (usedSkillIds.includes(item.id)) return; }
     else {
-        if (supportPhase === 1 && (redSupport.includes(item.id) || all.includes(item.id))) return alert("红方不可重复/不可选择出战英雄作为援护");
-        if (supportPhase === 2 && (blueSupport.includes(item.id) || all.includes(item.id))) return alert("蓝方不可重复/不可选择出战英雄作为援护");
+        if (supportPhase === 1 && (redSupport.includes(item.id) || all.includes(item.id) || redUsedSupportGlobal.includes(item.id))) return alert("红方不可重复/不可选择出战英雄/本系列赛已选用过的援护");
+        if (supportPhase === 2 && (blueSupport.includes(item.id) || all.includes(item.id) || blueUsedSupportGlobal.includes(item.id))) return alert("蓝方不可重复/不可选择出战英雄/本系列赛已选用过的援护");
     }
     preSelectItem = item;
     confirmSelectBtn.disabled = false;
@@ -449,10 +462,16 @@ function executeSelectLocal(item) {
         skillStep++; preSelectItem = null; confirmSelectBtn.disabled = true; refreshAll();
         if (!getMainStage().includes("贝壳能力BP")) { supportPhase = 1; refreshAll(); startTimer(); } else startTimer();
     } else if (supportPhase === 1) {
-        playPickSound(); redSupport.push(item.id); preSelectItem = null; confirmSelectBtn.disabled = true; refreshAll();
+        playPickSound();
+        redSupport.push(item.id);
+        if (!redUsedSupportGlobal.includes(item.id)) redUsedSupportGlobal.push(item.id);
+        preSelectItem = null; confirmSelectBtn.disabled = true; refreshAll();
         if (redSupport.length >= SUPPORT_LIMIT) { supportPhase = 2; clearTimer(); refreshAll(); startTimer(); } else startTimer();
     } else if (supportPhase === 2) {
-        playPickSound(); blueSupport.push(item.id); preSelectItem = null; confirmSelectBtn.disabled = true; refreshAll();
+        playPickSound();
+        blueSupport.push(item.id);
+        if (!blueUsedSupportGlobal.includes(item.id)) blueUsedSupportGlobal.push(item.id);
+        preSelectItem = null; confirmSelectBtn.disabled = true; refreshAll();
         if (blueSupport.length >= SUPPORT_LIMIT) { clearTimer(); finishCurrentRound(); } else startTimer();
     }
 }
@@ -546,6 +565,8 @@ function fullResetAllSeries() {
     matchType = ""; maxRound = 0; currentRound = 0; globalUsedRoleIds = [];
     preSelectItem = null; confirmSelectBtn.disabled = true; matchSelect.value = "";
     lastBlueRoleCount = 0; lastRedRoleCount = 0;
+    blueUsedSupportGlobal = [];
+    redUsedSupportGlobal = [];
     clearSingleRound();
 }
 
