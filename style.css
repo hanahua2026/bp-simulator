@@ -129,11 +129,23 @@ body {
     background: linear-gradient(180deg, #121420 0%, #0f111a 100%);
     border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 14px;
-    padding: 20px;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.center-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 20px 0 20px;
+}
+
+.center-col .confirm-box {
+    padding: 12px 20px 20px 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: linear-gradient(180deg, #121420 0%, #0f111a 100%);
+    text-align: center;
 }
 
 /* ========== 区域标题 ========== */
@@ -286,11 +298,6 @@ body {
 }
 
 /* ========== 确认按钮 ========== */
-.confirm-box {
-    width: 100%;
-    text-align: center;
-    padding-top: 12px;
-}
 #confirmSelectBtn {
     padding: 12px 50px;
     font-size: 17px;
