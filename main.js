@@ -588,6 +588,7 @@ startBtn.onclick = function () {
 
 resetAllBtn.onclick = function () {
     if (myRole !== "judge") return alert("只有裁判可以重置！");
+    if (!confirm("确定要重置整轮系列赛吗？此操作不可撤销。")) return;
     fullResetAllSeries();
     broadcast({ type: "reset" });
     syncState();
