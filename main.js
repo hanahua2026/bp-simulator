@@ -611,6 +611,7 @@ matchSelect.onchange = function () {
     const val = this.value;
     if (val === "bo3") { matchType = "bo3"; maxRound = 3; }
     else if (val === "bo5") { matchType = "bo5"; maxRound = 5; }
+    else if (val === "bo7") { matchType = "bo7"; maxRound = 7; }
     else { matchType = ""; maxRound = 0; }
     clearSingleRound();
 };
