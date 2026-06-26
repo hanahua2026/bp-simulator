@@ -1,5 +1,6 @@
 // ====================== 联机变量 ======================
 let myRole = "";
+let myOriginalRole = "";
 let myPeerId = "";
 let peer = null;
 let connections = {};
@@ -95,6 +96,7 @@ confirmJoinBtn.onclick = () => {
     roomId = id;
     roomPassword = pw;
     myRole = selectedJoinRole;
+    myOriginalRole = selectedJoinRole;
     joinForm.style.display = "none";
     roomInfo.style.display = "none";
     initPeer("client-" + Date.now().toString(36));
@@ -176,6 +178,7 @@ function handleData(data, conn) {
             break;
         case "auth_ok":
             myRole = data.role;
+            myOriginalRole = data.role;
             enterMainUI();
             roomMsg.innerText = "已加入房间，阵营：" + (myRole === "blue" ? "蓝方" : "红方");
             break;
@@ -217,22 +220,43 @@ function broadcast(data) {
     Object.values(connections).forEach(conn => { if (conn.open) conn.send(data); });
 }
 
-function enterMainUI() {
-    roomPanel.style.display = "none";
-    mainContainer.style.display = "block";
-    roleDisplay.innerText = "身份：" + (myRole === "judge" ? "裁判" : myRole === "blue" ? "蓝方" : "红方");
-    if (myRole === "blue") {
+// ====================== 换边逻辑 ======================
+function getCurrentRole() {
+    if (myRole === "judge") return "judge";
+    if (currentRound % 2 === 0) {
+        return myOriginalRole === "blue" ? "red" : "blue";
+    }
+    return myOriginalRole;
+}
+
+function updateSideByRound() {
+    if (myRole === "judge") return;
+    const currentRole = getCurrentRole();
+    if (currentRole === "blue") {
+        blueCol.style.pointerEvents = "auto";
+        blueCol.style.opacity = "1";
         redCol.style.pointerEvents = "none";
         redCol.style.opacity = "0.6";
-    } else if (myRole === "red") {
+    } else {
+        redCol.style.pointerEvents = "auto";
+        redCol.style.opacity = "1";
         blueCol.style.pointerEvents = "none";
         blueCol.style.opacity = "0.6";
     }
+}
+
+function enterMainUI() {
+    roomPanel.style.display = "none";
+    mainContainer.style.display = "block";
+    const currentRole = getCurrentRole();
+    roleDisplay.innerText = "身份：" + (myRole === "judge" ? "裁判" : myOriginalRole === "blue" ? "蓝方" : "红方");
     if (myRole === "judge") {
         blueCol.style.pointerEvents = "none";
         redCol.style.pointerEvents = "none";
         document.getElementById("centerPool").style.pointerEvents = "none";
         document.getElementById("confirmSelectBtn").style.display = "none";
+    } else {
+        updateSideByRound();
     }
 }
 
@@ -255,6 +279,7 @@ function receiveSync(state) {
     supportPhase = state.supportPhase;
     blueUsedSupportGlobal = state.blueUsedSupportGlobal || [];
     redUsedSupportGlobal = state.redUsedSupportGlobal || [];
+    updateSideByRound();
     refreshAll();
 }
 
@@ -347,13 +372,13 @@ function checkRoundComplete() {
 }
 
 function getMainStage() {
-    if (!matchType) return "等待选择BO3/BO5赛制";
+    if (!matchType) return "等待选择BO3/BO5/BO7赛制";
     if (checkRoundComplete()) return `第${currentRound}局全部BP完成，可开启下一局`;
     if (!battleStart) return "等待点击开启本局BP";
     if (roleStep < ROLE_ORDER.length) return "角色BP阶段";
     if (skillStep < SKILL_ORDER.length) return "贝壳能力BP阶段";
-    if (supportPhase === 1) return "援护阶段：红方选择4个援护（限时20秒）";
-    if (supportPhase === 2) return "援护阶段：蓝方选择4个援护（限时20秒）";
+    if (supportPhase === 1) return "援护阶段：红方选择4个援护（限时30秒）";
+    if (supportPhase === 2) return "援护阶段：蓝方选择4个援护（限时30秒）";
     return `第${currentRound}局全部BP完成，可开启下一局`;
 }
 
@@ -429,7 +454,7 @@ function renderPool() {
 }
 
 function setPreSelect(item) {
-    if (!matchType) return alert("请先选择BO3/BO5赛制");
+    if (!matchType) return alert("请先选择BO3/BO5/BO7赛制");
     if (!battleStart) return alert("请点击【开启本轮对局BP】");
     const stage = getMainStage();
     const all = [...blueRole.map(x => x.role.id), ...redRole.map(x => x.role.id)];
@@ -478,12 +503,13 @@ function executeSelectLocal(item) {
 
 function executeSelect(item) {
     const stage = getMainStage();
-    if (myRole === "blue") {
+    const currentRole = getCurrentRole();
+    if (currentRole === "blue") {
         const op = stage.includes("角色BP") ? ROLE_ORDER[roleStep] : stage.includes("贝壳能力BP") ? SKILL_ORDER[skillStep] : "";
         if (op && !op.includes("蓝") && supportPhase !== 2) return;
         if (supportPhase === 1) return;
     }
-    if (myRole === "red") {
+    if (currentRole === "red") {
         const op = stage.includes("角色BP") ? ROLE_ORDER[roleStep] : stage.includes("贝壳能力BP") ? SKILL_ORDER[skillStep] : "";
         if (op && !op.includes("红") && supportPhase !== 1) return;
         if (supportPhase === 2) return;
@@ -573,13 +599,14 @@ function fullResetAllSeries() {
 startBtn.onclick = function () {
     if (myRole !== "judge") return alert("只有裁判可以开始BP！");
     if (!blueJoined || !redJoined) return alert("双方未全部就位！");
-    if (!matchType) return alert("请先在上方选择BO3或BO5赛制！");
+    if (!matchType) return alert("请先在上方选择BO3/BO5/BO7赛制！");
     if (battleStart) return alert("当前对局BP正在进行中，无法重复开启");
     if (currentRound > 0 && !checkRoundComplete()) return alert("上一局BP未全部完成（援护未选满4个），无法开启下一局");
     if (currentRound >= maxRound) return alert(`已打完${maxRound}局，本轮系列赛结束，请点击【全部重置整轮系列赛】`);
     clearSingleRound();
     currentRound++;
     battleStart = true;
+    updateSideByRound();
     refreshAll();
     startTimer();
     broadcast({ type: "start_bp", state: { matchType, maxRound } });
@@ -601,6 +628,7 @@ function startBPFromJudge(data) {
     clearSingleRound();
     currentRound = 1;
     battleStart = true;
+    updateSideByRound();
     refreshAll();
     startTimer();
 }
