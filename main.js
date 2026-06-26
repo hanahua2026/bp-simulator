@@ -464,9 +464,17 @@ function setPreSelect(item) {
         if (supportPhase === 1 && (redSupport.includes(item.id) || all.includes(item.id) || redUsedSupportGlobal.includes(item.id))) return alert("红方不可重复/不可选择出战英雄/本系列赛已选用过的援护");
         if (supportPhase === 2 && (blueSupport.includes(item.id) || all.includes(item.id) || blueUsedSupportGlobal.includes(item.id))) return alert("蓝方不可重复/不可选择出战英雄/本系列赛已选用过的援护");
     }
+    // 先移除所有预选状态
+    document.querySelectorAll('.pool-card.pre-select').forEach(card => card.classList.remove('pre-select'));
     preSelectItem = item;
+    // 只给当前点击的卡片加预选样式
+    const cards = document.querySelectorAll('.pool-card');
+    cards.forEach(card => {
+        if (card.querySelector('p') && card.querySelector('p').innerText === item.name && !card.classList.contains('used') && !card.classList.contains('banned')) {
+            card.classList.add('pre-select');
+        }
+    });
     confirmSelectBtn.disabled = false;
-    refreshAll();
 }
 
 function executeSelectLocal(item) {
