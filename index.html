@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>BO3/BO5全局角色BP模拟器</title>
+    <title>BO3/BO5/BO7全局角色BP模拟器</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -33,6 +33,7 @@
                 <label>选择阵营：</label>
                 <button id="selectBlue" class="side-btn side-blue">蓝方</button>
                 <button id="selectRed" class="side-btn side-red">红方</button>
+                <button id="selectSpectator" class="side-btn side-spec">观众</button>
             </div>
             <p id="joinRoleText">未选择阵营</p>
             <button id="confirmJoinBtn" class="room-btn room-btn-join" disabled>确认加入</button>
@@ -43,6 +44,7 @@
             <p>密码：<span id="displayPassword"></span></p>
             <p>蓝方：<span id="blueStatus">等待加入</span></p>
             <p>红方：<span id="redStatus">等待加入</span></p>
+            <p>观众：<span id="spectatorCount">0</span>人</p>
         </div>
         <p id="roomMsg"></p>
     </div>
@@ -55,7 +57,7 @@
         <div class="select-box">
             <label>赛制选择：</label>
             <select id="matchSelect">
-                <option value="">请选择BO3/BO5</option>
+                <option value="">请选择BO3/BO5/BO7</option>
                 <option value="bo3">BO3（最多3局，角色全局锁定）</option>
                 <option value="bo5">BO5（最多5局，角色全局锁定）</option>
                 <option value="bo7">BO7（最多7局，角色全局锁定）</option>
@@ -67,7 +69,7 @@
             当前大阶段：<span id="mainStage">等待选择赛制</span>
             &nbsp;&nbsp;当前对局：第<span id="roundNum">0</span>局
             &nbsp;&nbsp;当前操作：<span id="stepInfo">无</span>
-            &nbsp;&nbsp;剩余时间：<span id="timerText">20</span>秒
+            &nbsp;&nbsp;剩余时间：<span id="timerText">30</span>秒
         </div>
         <div class="stage-info" id="roleDisplay"></div>
     </div>

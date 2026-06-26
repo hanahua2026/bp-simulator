@@ -854,6 +854,24 @@ body {
     color: #f08c8c;
     box-shadow: 0 0 12px rgba(176, 53, 53, 0.3);
 }
+.side-spec {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 2px solid #2a2d3d;
+    background: #1a1c2a;
+    color: #9ba0b0;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+}
+.side-spec.selected {
+    border-color: #8a8a40;
+    background: #2a2a1a;
+    color: #d4c860;
+    box-shadow: 0 0 12px rgba(200, 180, 80, 0.3);
+}
 #joinRoleText {
     color: #e2c868;
     font-weight: 600;

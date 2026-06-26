@@ -8,6 +8,7 @@ let roomId = "";
 let roomPassword = "";
 let blueJoined = false;
 let redJoined = false;
+let spectatorCount = 0;
 
 const roomPanel = document.getElementById("roomPanel");
 const mainContainer = document.getElementById("mainContainer");
@@ -29,10 +30,12 @@ const blueStatus = document.getElementById("blueStatus");
 const redStatus = document.getElementById("redStatus");
 const selectBlueBtn = document.getElementById("selectBlue");
 const selectRedBtn = document.getElementById("selectRed");
+const selectSpectatorBtn = document.getElementById("selectSpectator");
 const joinRoleText = document.getElementById("joinRoleText");
 const roleDisplay = document.getElementById("roleDisplay");
 const blueCol = document.getElementById("blueCol");
 const redCol = document.getElementById("redCol");
+const spectatorCountDom = document.getElementById("spectatorCount");
 
 let selectedJoinRole = "";
 
@@ -55,6 +58,7 @@ joinRoomBtn.onclick = () => {
     confirmJoinBtn.disabled = true;
     selectBlueBtn.classList.remove("selected");
     selectRedBtn.classList.remove("selected");
+    selectSpectatorBtn.classList.remove("selected");
 };
 cancelCreateBtn.onclick = () => { createForm.style.display = "none"; };
 cancelJoinBtn.onclick = () => { joinForm.style.display = "none"; };
@@ -65,6 +69,7 @@ selectBlueBtn.onclick = () => {
     confirmJoinBtn.disabled = false;
     selectBlueBtn.classList.add("selected");
     selectRedBtn.classList.remove("selected");
+    selectSpectatorBtn.classList.remove("selected");
 };
 selectRedBtn.onclick = () => {
     selectedJoinRole = "red";
@@ -72,6 +77,15 @@ selectRedBtn.onclick = () => {
     confirmJoinBtn.disabled = false;
     selectRedBtn.classList.add("selected");
     selectBlueBtn.classList.remove("selected");
+    selectSpectatorBtn.classList.remove("selected");
+};
+selectSpectatorBtn.onclick = () => {
+    selectedJoinRole = "spectator";
+    joinRoleText.innerText = "已选择：观众";
+    confirmJoinBtn.disabled = false;
+    selectSpectatorBtn.classList.add("selected");
+    selectBlueBtn.classList.remove("selected");
+    selectRedBtn.classList.remove("selected");
 };
 
 confirmCreateBtn.onclick = () => {
@@ -92,7 +106,7 @@ confirmJoinBtn.onclick = () => {
     const id = document.getElementById("joinRoomId").value.trim();
     const pw = document.getElementById("joinPassword").value.trim();
     if (!id || !pw) return alert("请输入房间ID和密码");
-    if (!selectedJoinRole) return alert("请选择阵营");
+    if (!selectedJoinRole) return alert("请选择阵营或观众");
     roomId = id;
     roomPassword = pw;
     myRole = selectedJoinRole;
@@ -145,7 +159,13 @@ function handleConnection(conn) {
         conn.send({ type: "auth", role: myRole, password: roomPassword });
     });
     conn.on("data", (data) => handleData(data, conn));
-    conn.on("close", () => delete connections[conn.peer]);
+    conn.on("close", () => {
+        if (conn.clientRole === "spectator") {
+            spectatorCount = Math.max(0, spectatorCount - 1);
+            updateRoomStatus();
+        }
+        delete connections[conn.peer];
+    });
 }
 
 function handleData(data, conn) {
@@ -157,12 +177,13 @@ function handleData(data, conn) {
                     conn.close();
                     return;
                 }
-                if (data.role === "blue" && blueJoined) {
+                if (data.role === "spectator") {
+                    // 观众不限人数
+                } else if (data.role === "blue" && blueJoined) {
                     conn.send({ type: "error", msg: "蓝方已有人加入" });
                     conn.close();
                     return;
-                }
-                if (data.role === "red" && redJoined) {
+                } else if (data.role === "red" && redJoined) {
                     conn.send({ type: "error", msg: "红方已有人加入" });
                     conn.close();
                     return;
@@ -170,6 +191,7 @@ function handleData(data, conn) {
                 conn.clientRole = data.role;
                 if (data.role === "blue") blueJoined = true;
                 if (data.role === "red") redJoined = true;
+                if (data.role === "spectator") spectatorCount++;
                 updateRoomStatus();
                 conn.send({ type: "auth_ok", role: data.role });
                 if (!mainContainer.style.display || mainContainer.style.display === "none") enterMainUI();
@@ -180,7 +202,7 @@ function handleData(data, conn) {
             myRole = data.role;
             myOriginalRole = data.role;
             enterMainUI();
-            roomMsg.innerText = "已加入房间，阵营：" + (myRole === "blue" ? "蓝方" : "红方");
+            roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
             break;
         case "error":
             alert(data.msg);
@@ -214,6 +236,7 @@ function handleData(data, conn) {
 function updateRoomStatus() {
     blueStatus.innerText = blueJoined ? "已就位" : "等待加入";
     redStatus.innerText = redJoined ? "已就位" : "等待加入";
+    if (spectatorCountDom) spectatorCountDom.innerText = spectatorCount;
 }
 
 function broadcast(data) {
@@ -222,7 +245,7 @@ function broadcast(data) {
 
 // ====================== 换边逻辑 ======================
 function getCurrentRole() {
-    if (myRole === "judge") return "judge";
+    if (myRole === "judge" || myRole === "spectator") return myRole;
     if (currentRound % 2 === 0) {
         return myOriginalRole === "blue" ? "red" : "blue";
     }
@@ -230,7 +253,7 @@ function getCurrentRole() {
 }
 
 function updateSideByRound() {
-    if (myRole === "judge") return;
+    if (myRole === "judge" || myRole === "spectator") return;
     const currentRole = getCurrentRole();
     if (currentRole === "blue") {
         blueCol.style.pointerEvents = "auto";
@@ -248,13 +271,17 @@ function updateSideByRound() {
 function enterMainUI() {
     roomPanel.style.display = "none";
     mainContainer.style.display = "block";
-    const currentRole = getCurrentRole();
-    roleDisplay.innerText = "身份：" + (myRole === "judge" ? "裁判" : myOriginalRole === "blue" ? "蓝方" : "红方");
-    if (myRole === "judge") {
+    roleDisplay.innerText = "身份：" + (myRole === "judge" ? "裁判" : myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
+    if (myRole === "judge" || myRole === "spectator") {
         blueCol.style.pointerEvents = "none";
         redCol.style.pointerEvents = "none";
         document.getElementById("centerPool").style.pointerEvents = "none";
         document.getElementById("confirmSelectBtn").style.display = "none";
+        if (myRole === "spectator") {
+            document.getElementById("startBtn").style.display = "none";
+            document.getElementById("resetAllBtn").style.display = "none";
+            matchSelect.disabled = true;
+        }
     } else {
         updateSideByRound();
     }
@@ -464,10 +491,8 @@ function setPreSelect(item) {
         if (supportPhase === 1 && (redSupport.includes(item.id) || all.includes(item.id) || redUsedSupportGlobal.includes(item.id))) return alert("红方不可重复/不可选择出战英雄/本系列赛已选用过的援护");
         if (supportPhase === 2 && (blueSupport.includes(item.id) || all.includes(item.id) || blueUsedSupportGlobal.includes(item.id))) return alert("蓝方不可重复/不可选择出战英雄/本系列赛已选用过的援护");
     }
-    // 先移除所有预选状态
     document.querySelectorAll('.pool-card.pre-select').forEach(card => card.classList.remove('pre-select'));
     preSelectItem = item;
-    // 只给当前点击的卡片加预选样式
     const cards = document.querySelectorAll('.pool-card');
     cards.forEach(card => {
         if (card.querySelector('p') && card.querySelector('p').innerText === item.name && !card.classList.contains('used') && !card.classList.contains('banned')) {
@@ -522,7 +547,7 @@ function executeSelect(item) {
         if (op && !op.includes("红") && supportPhase !== 1) return;
         if (supportPhase === 2) return;
     }
-    if (myRole === "judge") return;
+    if (myRole === "judge" || myRole === "spectator") return;
     executeSelectLocal(item);
     const poolType = stage.includes("角色BP") ? "role" : stage.includes("贝壳能力BP") ? "skill" : "support";
     syncSelection(item, poolType);
