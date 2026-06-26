@@ -28,7 +28,6 @@ const SKILL_BP_ORDER = [
 const ROLE_LIST = [
     {id:1,name:"艾尼路",img:"anl.png"},
     {id:2,name:"艾斯",img:"as.png"},
-    {id:3,name:"顶上老沙",img:"dsls.png"},
     {id:4,name:"大熊",img:"dx.png"},
     {id:5,name:"黑胡子",img:"hhz.png"},
     {id:6,name:"黄猿",img:"hy.png"},
@@ -140,7 +139,6 @@ const SKILL_LIST = [
 const SUPPORT_LIST = [
     {id:1,name:"艾尼路",img:"anl.png"},
     {id:2,name:"艾斯",img:"as.png"},
-    {id:3,name:"顶上老沙",img:"dsls.png"},
     {id:4,name:"大熊",img:"dx.png"},
     {id:5,name:"黑胡子",img:"hhz.png"},
     {id:6,name:"黄猿",img:"hy.png"},
