@@ -92,7 +92,7 @@ confirmCreateBtn.onclick = () => {
     const pw = document.getElementById("createPassword").value.trim();
     if (!pw) return alert("请设置房间密码");
     roomPassword = pw;
-    roomId = "hana-bp-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    roomId = "room-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     myRole = "judge";
     displayRoomId.innerText = roomId;
     displayPassword.innerText = roomPassword;
@@ -121,13 +121,14 @@ confirmJoinBtn.onclick = () => {
 function initPeer(id) {
     peer = new Peer(id, {
         debug: 0,
+        host: '0.peerjs.com',
+        port: 443,
+        secure: true,
+        path: '/',
         config: {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' },
-                { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' }
+                { urls: 'stun:stun1.l.google.com:19302' }
             ]
         }
     });
@@ -177,6 +178,7 @@ function handleData(data, conn) {
                     return;
                 }
                 if (data.role === "spectator") {
+                    // 观众不限人数
                 } else if (data.role === "blue" && blueJoined) {
                     conn.send({ type: "error", msg: "蓝方已有人加入" });
                     conn.close();
