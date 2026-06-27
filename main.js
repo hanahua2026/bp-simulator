@@ -8,7 +8,6 @@ let roomPassword = "";
 let blueJoined = false;
 let redJoined = false;
 let spectatorCount = 0;
-let connections = {};
 
 const roomPanel = document.getElementById("roomPanel");
 const mainContainer = document.getElementById("mainContainer");
@@ -119,36 +118,33 @@ confirmJoinBtn.onclick = () => {
 
 // ====================== Bugout P2P ======================
 function initBugout(room) {
-    b = new Bugout(room, {
-        announce: ["wss://tracker.openwebtorrent.com", "wss://tracker.btorrent.xyz"]
+    b = new Bugout(room);
+
+    b.on("connections", (count) => {
+        console.log("连接数:", count);
     });
 
-    b.on("seen", (address) => {
-        connections[address] = true;
-        console.log("连接成功:", address);
-        myPeerId = b.address();
-        if (myRole !== "judge") {
-            b.send(JSON.stringify({ type: "auth", role: myRole, password: roomPassword }));
-        }
-    });
-
-    b.on("message", (address, msg) => {
+    b.on("rpc", (address, data) => {
         try {
-            const data = JSON.parse(msg);
-            data._from = address;
-            handleBugoutData(data, address);
+            const msg = JSON.parse(data);
+            msg._from = address;
+            handleBugoutData(msg, address);
         } catch (e) {}
     });
 
-    b.on("left", (address) => {
-        delete connections[address];
-    });
-
     myPeerId = b.address();
+    console.log("Bugout 启动, address:", myPeerId);
+
+    if (myRole !== "judge") {
+        const authInterval = setInterval(() => {
+            b.rpc(JSON.stringify({ type: "auth", role: myRole, password: roomPassword }));
+        }, 2000);
+        setTimeout(() => clearInterval(authInterval), 60000);
+    }
 }
 
 function broadcastBugout(data) {
-    b.send(JSON.stringify(data));
+    b.rpc(JSON.stringify(data));
 }
 
 function handleBugoutData(data, address) {
@@ -177,14 +173,14 @@ function handleBugoutData(data, address) {
                 if (blueJoined && redJoined) roomMsg.innerText = "双方已就位，可以开始BP！";
             }
             break;
-            case "auth_ok":
-    console.log("收到 auth_ok, 当前myRole:", myRole, "data.role:", data.role);
-    myRole = data.role;
-    myOriginalRole = data.role;
-    console.log("准备进入主界面, myRole:", myRole);
-    enterMainUI();
-    roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
-    break;
+        case "auth_ok":
+            console.log("收到 auth_ok, 当前myRole:", myRole, "data.role:", data.role);
+            myRole = data.role;
+            myOriginalRole = data.role;
+            console.log("准备进入主界面, myRole:", myRole);
+            enterMainUI();
+            roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
+            break;
         case "sync_state":
             if (data.from !== myPeerId) {
                 receiveSync(data.state);
