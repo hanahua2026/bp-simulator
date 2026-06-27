@@ -124,9 +124,8 @@ function initBugout(room) {
     });
 
     b.on("seen", (address) => {
-        const addrStr = address;
-        connections[addrStr] = true;
-        console.log("连接成功:", addrStr);
+        connections[address] = true;
+        console.log("连接成功:", address);
         myPeerId = b.address();
         if (myRole !== "judge") {
             b.send(JSON.stringify({ type: "auth", role: myRole, password: roomPassword }));
@@ -174,15 +173,17 @@ function handleBugoutData(data, address) {
                 if (data.role === "spectator") spectatorCount++;
                 updateRoomStatus();
                 broadcastBugout({ type: "auth_ok", role: data.role });
-                if (!mainContainer.style.display || mainContainer.style.display === "none") enterMainUI();
+                if (mainContainer.style.display === "none" || !mainContainer.style.display) enterMainUI();
                 if (blueJoined && redJoined) roomMsg.innerText = "双方已就位，可以开始BP！";
             }
             break;
         case "auth_ok":
-            myRole = data.role;
-            myOriginalRole = data.role;
-            enterMainUI();
-            roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
+            if (myRole !== "judge") {
+                myRole = data.role;
+                myOriginalRole = data.role;
+                enterMainUI();
+                roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
+            }
             break;
         case "sync_state":
             if (data.from !== myPeerId) {
@@ -245,6 +246,7 @@ function updateSideByRound() {
 }
 
 function enterMainUI() {
+    console.log("enterMainUI called, role:", myRole);
     roomPanel.style.display = "none";
     mainContainer.style.display = "block";
     roleDisplay.innerText = "身份：" + (myRole === "judge" ? "裁判" : myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
