@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BO3/BO5/BO7全局角色BP模拟器</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -13,23 +14,26 @@
         <h2>小花牌BP模拟器</h2>
         <p class="room-subtitle">在线联机对战模式</p>
         <div class="room-buttons">
-            <button id="createRoomBtn" class="room-btn room-btn-create">创建房间</button>
+            <button id="createRoomBtn" class="room-btn room-btn-create">创建房间（裁判）</button>
             <button id="joinRoomBtn" class="room-btn room-btn-join">加入房间</button>
         </div>
         <div class="room-form" id="createForm" style="display:none;">
             <h3>创建房间 - 裁判端</h3>
-            <label>设置房间密码：</label>
-            <input type="password" id="createPassword" placeholder="输入密码" maxlength="10">
-            <button id="confirmCreateBtn" class="room-btn room-btn-create">确认创建</button>
-            <button id="cancelCreateBtn" class="room-btn room-btn-cancel">取消</button>
+            <p style="color:#e2c868;font-size:14px;">点击生成邀请码，发给对方即可</p>
+            <button id="genInviteBtn" class="room-btn room-btn-create">生成邀请码</button>
+            <div id="inviteCodeBox" style="display:none;margin-top:15px;">
+                <p style="color:#9ba0b0;">复制下面的邀请码发给对方：</p>
+                <textarea id="inviteCodeText" readonly style="width:100%;height:80px;background:#1a1c2a;color:#e2c868;border:1px solid #2a2d3d;border-radius:8px;padding:10px;font-size:12px;resize:none;"></textarea>
+                <button id="copyInviteBtn" class="room-btn room-btn-create" style="margin-top:10px;">复制邀请码</button>
+            </div>
+            <p id="waitingMsg" style="color:#e2c868;margin-top:10px;display:none;">等待对方连接...</p>
+            <button id="cancelCreateBtn" class="room-btn room-btn-cancel" style="margin-top:10px;">取消</button>
         </div>
         <div class="room-form" id="joinForm" style="display:none;">
             <h3>加入房间</h3>
-            <label>房间ID：</label>
-            <input type="text" id="joinRoomId" placeholder="输入房间ID">
-            <label>房间密码：</label>
-            <input type="password" id="joinPassword" placeholder="输入密码" maxlength="10">
-            <div class="role-select">
+            <label>粘贴邀请码：</label>
+            <textarea id="inviteInput" placeholder="粘贴对方发来的邀请码" style="width:100%;height:80px;background:#1a1c2a;color:#e8eaed;border:1px solid #2a2d3d;border-radius:8px;padding:10px;font-size:12px;resize:none;"></textarea>
+            <div class="role-select" style="margin-top:12px;">
                 <label>选择阵营：</label>
                 <button id="selectBlue" class="side-btn side-blue">蓝方</button>
                 <button id="selectRed" class="side-btn side-red">红方</button>
@@ -38,13 +42,6 @@
             <p id="joinRoleText">未选择阵营</p>
             <button id="confirmJoinBtn" class="room-btn room-btn-join" disabled>确认加入</button>
             <button id="cancelJoinBtn" class="room-btn room-btn-cancel">取消</button>
-        </div>
-        <div class="room-info" id="roomInfo" style="display:none;">
-            <p>房间ID：<span id="displayRoomId"></span></p>
-            <p>密码：<span id="displayPassword"></span></p>
-            <p>蓝方：<span id="blueStatus">等待加入</span></p>
-            <p>红方：<span id="redStatus">等待加入</span></p>
-            <p>观众：<span id="spectatorCount">0</span>人</p>
         </div>
         <p id="roomMsg"></p>
     </div>
@@ -75,48 +72,27 @@
     </div>
     <div class="main-box">
         <div class="col blue-col" id="blueCol">
-            <div class="ban-area">
-                <h4>蓝方禁用角色</h4>
-                <div class="ban-wrap" id="blueRoleBan"></div>
-            </div>
-            <div class="pick-area">
-                <h4>蓝方出战角色</h4>
-                <div class="pick-list" id="bluePickList"></div>
-            </div>
-            <div class="tl-area">
-                <h4>蓝方援护</h4>
-                <div class="tl-wrap" id="blueSupport"></div>
-            </div>
+            <div class="ban-area"><h4>蓝方禁用角色</h4><div class="ban-wrap" id="blueRoleBan"></div></div>
+            <div class="pick-area"><h4>蓝方出战角色</h4><div class="pick-list" id="bluePickList"></div></div>
+            <div class="tl-area"><h4>蓝方援护</h4><div class="tl-wrap" id="blueSupport"></div></div>
         </div>
         <div class="center-col">
             <div class="center-scroll">
                 <h3 id="poolTitle"></h3>
                 <div class="pool-wrap" id="centerPool"></div>
             </div>
-            <div class="confirm-box">
-                <button id="confirmSelectBtn" disabled>确认选择</button>
-            </div>
+            <div class="confirm-box"><button id="confirmSelectBtn" disabled>确认选择</button></div>
         </div>
         <div class="col red-col" id="redCol">
-            <div class="ban-area">
-                <h4>红方禁用角色</h4>
-                <div class="ban-wrap" id="redRoleBan"></div>
-            </div>
-            <div class="pick-area">
-                <h4>红方出战角色</h4>
-                <div class="pick-list" id="redPickList"></div>
-            </div>
-            <div class="tl-area">
-                <h4>红方援护</h4>
-                <div class="tl-wrap" id="redSupport"></div>
-            </div>
+            <div class="ban-area"><h4>红方禁用角色</h4><div class="ban-wrap" id="redRoleBan"></div></div>
+            <div class="pick-area"><h4>红方出战角色</h4><div class="pick-list" id="redPickList"></div></div>
+            <div class="tl-area"><h4>红方援护</h4><div class="tl-wrap" id="redSupport"></div></div>
         </div>
     </div>
     <audio id="banAudio" src="sound/ban.mp3" preload="auto"></audio>
     <audio id="pickAudio" src="sound/pick.mp3" preload="auto"></audio>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
 <script src="config.js"></script>
 <script src="main.js"></script>
 </body>

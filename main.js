@@ -1,34 +1,30 @@
-// ====================== 联机变量 ======================
+// ====================== 纯手工 WebRTC，零服务器依赖 ======================
 let myRole = "";
 let myOriginalRole = "";
-let myPeerId = "";
-let peer = null;
-let connections = {};
-let roomId = "";
+let pc = null;
+let dataChannel = null;
 let roomPassword = "";
 let blueJoined = false;
 let redJoined = false;
 let spectatorCount = 0;
-let connectingToJudge = false;
 
 const roomPanel = document.getElementById("roomPanel");
 const mainContainer = document.getElementById("mainContainer");
 
-// 房间 DOM
 const createRoomBtn = document.getElementById("createRoomBtn");
 const joinRoomBtn = document.getElementById("joinRoomBtn");
 const createForm = document.getElementById("createForm");
 const joinForm = document.getElementById("joinForm");
-const confirmCreateBtn = document.getElementById("confirmCreateBtn");
+const genInviteBtn = document.getElementById("genInviteBtn");
+const inviteCodeBox = document.getElementById("inviteCodeBox");
+const inviteCodeText = document.getElementById("inviteCodeText");
+const copyInviteBtn = document.getElementById("copyInviteBtn");
+const waitingMsg = document.getElementById("waitingMsg");
+const inviteInput = document.getElementById("inviteInput");
 const cancelCreateBtn = document.getElementById("cancelCreateBtn");
 const confirmJoinBtn = document.getElementById("confirmJoinBtn");
 const cancelJoinBtn = document.getElementById("cancelJoinBtn");
 const roomMsg = document.getElementById("roomMsg");
-const roomInfo = document.getElementById("roomInfo");
-const displayRoomId = document.getElementById("displayRoomId");
-const displayPassword = document.getElementById("displayPassword");
-const blueStatus = document.getElementById("blueStatus");
-const redStatus = document.getElementById("redStatus");
 const selectBlueBtn = document.getElementById("selectBlue");
 const selectRedBtn = document.getElementById("selectRed");
 const selectSpectatorBtn = document.getElementById("selectSpectator");
@@ -36,13 +32,21 @@ const joinRoleText = document.getElementById("joinRoleText");
 const roleDisplay = document.getElementById("roleDisplay");
 const blueCol = document.getElementById("blueCol");
 const redCol = document.getElementById("redCol");
-const spectatorCountDom = document.getElementById("spectatorCount");
 
 let selectedJoinRole = "";
-
-// ====================== 全局援护禁用变量 ======================
 let blueUsedSupportGlobal = [];
 let redUsedSupportGlobal = [];
+let pendingAnswer = null;
+
+// ====================== WebRTC ======================
+const iceConfig = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun.qq.com:3478' },
+        { urls: 'stun:stun.miwifi.com:3478' }
+    ]
+};
 
 // ====================== 房间面板逻辑 ======================
 createRoomBtn.onclick = () => {
@@ -60,9 +64,18 @@ joinRoomBtn.onclick = () => {
     selectBlueBtn.classList.remove("selected");
     selectRedBtn.classList.remove("selected");
     selectSpectatorBtn.classList.remove("selected");
+    inviteInput.value = "";
 };
-cancelCreateBtn.onclick = () => { createForm.style.display = "none"; };
-cancelJoinBtn.onclick = () => { joinForm.style.display = "none"; };
+cancelCreateBtn.onclick = () => { 
+    createForm.style.display = "none"; 
+    inviteCodeBox.style.display = "none"; 
+    waitingMsg.style.display = "none";
+    if (pc) { pc.close(); pc = null; }
+};
+cancelJoinBtn.onclick = () => { 
+    joinForm.style.display = "none"; 
+    if (pc) { pc.close(); pc = null; }
+};
 
 selectBlueBtn.onclick = () => {
     selectedJoinRole = "blue";
@@ -89,300 +102,196 @@ selectSpectatorBtn.onclick = () => {
     selectRedBtn.classList.remove("selected");
 };
 
-confirmCreateBtn.onclick = () => {
-    const pw = document.getElementById("createPassword").value.trim();
-    if (!pw) return alert("请设置房间密码");
-    roomPassword = pw;
-    roomId = "bp" + Date.now().toString(36).slice(-6) + Math.random().toString(36).slice(2, 6);
+// 裁判：生成邀请码
+genInviteBtn.onclick = () => {
     myRole = "judge";
-    displayRoomId.innerText = roomId;
-    displayPassword.innerText = roomPassword;
-    roomInfo.style.display = "block";
-    createForm.style.display = "none";
-    initPeer(roomId);
-    roomMsg.innerText = "房间已创建，请将房间ID发给对方！";
+    roomPassword = Math.random().toString(36).slice(2, 8);
+    roomMsg.innerText = "正在生成邀请码...";
+    
+    pc = new RTCPeerConnection(iceConfig);
+    dataChannel = pc.createDataChannel("bp", { ordered: true });
+    setupDataChannel(dataChannel);
+    
+    pc.createOffer().then(offer => {
+        pc.setLocalDescription(offer);
+        // 等待 ICE 收集完成
+        waitForIceComplete(offer);
+    });
+    
+    pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected") {
+            waitingMsg.innerText = "✅ 对方已连接！";
+            roomMsg.innerText = "";
+            dataChannel.send(JSON.stringify({ type: "auth_ok", role: "blue" }));
+            setTimeout(() => {
+                blueJoined = true;
+                redJoined = true;
+                enterMainUI();
+            }, 500);
+        }
+    };
 };
 
-confirmJoinBtn.onclick = () => {
-    const id = document.getElementById("joinRoomId").value.trim();
-    const pw = document.getElementById("joinPassword").value.trim();
-    if (!id || !pw) return alert("请输入房间ID和密码");
-    if (!selectedJoinRole) return alert("请选择阵营或观众");
-    roomId = id;
-    roomPassword = pw;
-    myRole = selectedJoinRole;
-    myOriginalRole = selectedJoinRole;
-    joinForm.style.display = "none";
-    roomInfo.style.display = "none";
-    initPeer("c" + Date.now().toString(36).slice(-6) + Math.random().toString(36).slice(2, 6));
-    roomMsg.innerText = "正在连接房间...";
-};
-
-// ====================== PeerJS ======================
-function initPeer(id) {
-    console.log("初始化 Peer，ID:", id);
-
-    peer = new Peer(id, {
-        debug: 2,
-        host: '0.peerjs.com',
-        port: 443,
-        secure: true,
-        path: '/',
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.qq.com:3478' },
-                { urls: 'stun:stun.miwifi.com:3478' },
-                { urls: 'stun:stun.voipbuster.com:3478' },
-                { urls: 'stun:stun.voiparound.com:3478' },
-                { urls: 'stun:stun.l.google.com:19302' },
-                {
-                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
-                },
-                {
-                    urls: 'turn:global.turn.twilio.com:3478?transport=tcp',
-                    username: 'f4b4035eaa76f4a55de5f4351567653ee4ff6fa97b50b6b334fcc1be9c27212d',
-                    credential: 'w1W4GgkTFp7j6tHTNQkL9HJiLpU+W/oPQRJ2CqCQdBs='
-                }
-            ],
-            iceCandidatePoolSize: 5,
-            iceTransportPolicy: 'all',
-            sdpSemantics: 'unified-plan'
-        }
-    });
-
-    peer.on("open", (pid) => {
-        myPeerId = pid;
-        console.log("✅ Peer 已启动！实际ID:", pid);
-        console.log("   我的角色:", myRole);
-        console.log("   房间ID:", roomId);
-
-        if (myRole === "judge") {
-            roomMsg.innerText = "房间已就绪！\n房间ID: " + roomId + "\n密码: " + roomPassword;
-        } else {
-            console.log("   准备连接到裁判:", roomId);
-            roomMsg.innerText = "信令服务器已连接，正在连接房间...";
-            setTimeout(() => {
-                connectToJudge();
-            }, 1000);
-        }
-    });
-
-    peer.on("connection", (conn) => {
-        console.log("📞 收到连接请求，来自:", conn.peer);
-        handleConnection(conn);
-    });
-
-    peer.on("error", (err) => {
-        console.error("❌ Peer 错误:", err.type, err.message);
-        let msg = "连接错误：";
-        if (err.type === "peer-unavailable") {
-            msg += "房间不存在或裁判已离线，请检查房间ID";
-        } else if (err.type === "network") {
-            msg += "网络连接失败，请检查网络或刷新重试";
-        } else if (err.type === "webrtc") {
-            msg += "浏览器不支持或网络受限，请尝试用Chrome浏览器";
-        } else if (err.type === "unavailable-id") {
-            msg += "房间ID已被占用，请重新创建";
-        } else {
-            msg += err.message;
-        }
-        roomMsg.innerText = msg;
-    });
-
-    peer.on("disconnected", () => {
-        console.log("⚠️ 信令服务器断开");
-        roomMsg.innerText = "信令服务器断开，正在重连...";
-        if (peer && !peer.destroyed) {
-            setTimeout(() => {
-                peer.reconnect();
-            }, 2000);
-        }
-    });
-
-    peer.on("close", () => {
-        console.log("🔒 Peer 连接已关闭");
-    });
-}
-
-function connectToJudge() {
-    if (connectingToJudge) {
-        console.log("⚠️ 正在连接中，跳过重复连接");
-        return;
-    }
-    connectingToJudge = true;
-
-    console.log("🔗 开始连接到房间:", roomId);
-
-    const conn = peer.connect(roomId, {
-        reliable: true
-    });
-
-    console.log("   连接对象已创建");
-    handleConnection(conn);
-
-    let connectionTimeout = setTimeout(() => {
-        if (!conn.open) {
-            roomMsg.innerText = "❌ 连接超时！\n可能原因：\n1. 房间ID错误\n2. 裁判已关闭页面\n3. 网络不通\n\n请尝试刷新页面重试";
-            console.error("⏰ 连接超时");
-            connectingToJudge = false;
-        }
-    }, 30000);
-
-    conn.on("open", () => {
-        clearTimeout(connectionTimeout);
-        connectingToJudge = false;
-        console.log("✅ 数据通道已建立！");
-    });
-
-    conn.on("error", () => {
-        connectingToJudge = false;
-    });
-}
-
-function handleConnection(conn) {
-    conn.on("open", () => {
-        console.log("📦 数据通道打开:", conn.peer);
-        connections[conn.peer] = conn;
-        console.log("   发送认证信息，角色:", myRole);
-        conn.send({
-            type: "auth",
-            role: myRole,
+function waitForIceComplete(offer) {
+    let timer = setTimeout(() => {
+        const finalOffer = pc.localDescription;
+        const invite = JSON.stringify({
+            type: "offer",
+            sdp: finalOffer.sdp,
             password: roomPassword
         });
-    });
-
-    conn.on("data", (data) => {
-        console.log("📨 收到数据:", data.type);
-        handleData(data, conn);
-    });
-
-    conn.on("close", () => {
-        console.log("🔌 连接关闭:", conn.peer);
-        if (conn.clientRole === "spectator") {
-            spectatorCount = Math.max(0, spectatorCount - 1);
-            updateRoomStatus();
+        inviteCodeText.value = btoa(unescape(encodeURIComponent(invite)));
+        inviteCodeBox.style.display = "block";
+        waitingMsg.style.display = "block";
+        roomMsg.innerText = "";
+        waitingMsg.innerText = "等待对方连接...";
+    }, 3000);
+    
+    pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === "complete") {
+            clearTimeout(timer);
+            const finalOffer = pc.localDescription;
+            const invite = JSON.stringify({
+                type: "offer",
+                sdp: finalOffer.sdp,
+                password: roomPassword
+            });
+            inviteCodeText.value = btoa(unescape(encodeURIComponent(invite)));
+            inviteCodeBox.style.display = "block";
+            waitingMsg.style.display = "block";
+            roomMsg.innerText = "";
+            waitingMsg.innerText = "等待对方连接...";
         }
-        if (conn.clientRole === "blue") {
-            blueJoined = false;
-            updateRoomStatus();
-        }
-        if (conn.clientRole === "red") {
-            redJoined = false;
-            updateRoomStatus();
-        }
-        delete connections[conn.peer];
-    });
-
-    conn.on("error", (err) => {
-        console.error("⚠️ 数据通道错误:", err);
-    });
+    };
 }
 
-function handleData(data, conn) {
-    console.log("📋 处理数据:", data.type, "| 我是:", myRole);
+copyInviteBtn.onclick = () => {
+    inviteCodeText.select();
+    document.execCommand("copy");
+    alert("邀请码已复制！请通过QQ/微信发给对方");
+};
 
+// 加入者：粘贴邀请码
+confirmJoinBtn.onclick = () => {
+    const code = inviteInput.value.trim();
+    if (!code) return alert("请粘贴邀请码");
+    if (!selectedJoinRole) return alert("请选择阵营");
+    
+    try {
+        const invite = JSON.parse(decodeURIComponent(escape(atob(code))));
+        roomPassword = invite.password;
+        myRole = selectedJoinRole;
+        myOriginalRole = selectedJoinRole;
+        
+        roomMsg.innerText = "正在连接...";
+        
+        pc = new RTCPeerConnection(iceConfig);
+        
+        pc.ondatachannel = (event) => {
+            dataChannel = event.channel;
+            setupDataChannel(dataChannel);
+            dataChannel.onopen = () => {
+                dataChannel.send(JSON.stringify({ type: "auth", role: myRole, password: roomPassword }));
+            };
+        };
+        
+        pc.onconnectionstatechange = () => {
+            if (pc.connectionState === "connected") {
+                roomMsg.innerText = "✅ 已连接！";
+            }
+        };
+        
+        pc.setRemoteDescription(new RTCSessionDescription({
+            type: "offer",
+            sdp: invite.sdp
+        })).then(() => {
+            return pc.createAnswer();
+        }).then(answer => {
+            return pc.setLocalDescription(answer);
+        });
+        
+        joinForm.style.display = "none";
+        
+    } catch (e) {
+        roomMsg.innerText = "邀请码无效，请检查";
+    }
+};
+
+function setupDataChannel(ch) {
+    ch.onopen = () => {
+        console.log("数据通道已打开");
+        if (myRole === "judge") {
+            ch.send(JSON.stringify({ type: "auth_ok", role: "blue" }));
+        }
+    };
+    
+    ch.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        handleData(data);
+    };
+    
+    ch.onclose = () => {
+        console.log("数据通道关闭");
+    };
+}
+
+function handleData(data) {
     switch (data.type) {
         case "auth":
             if (myRole === "judge") {
-                console.log("   验证密码...");
                 if (data.password !== roomPassword) {
-                    console.log("   ❌ 密码错误");
-                    conn.send({ type: "error", msg: "密码错误" });
-                    conn.close();
+                    dataChannel.send(JSON.stringify({ type: "error", msg: "密码错误" }));
                     return;
                 }
-
-                console.log("   角色:", data.role);
-
-                if (data.role === "blue" && blueJoined) {
-                    conn.send({ type: "error", msg: "蓝方已有人加入" });
-                    conn.close();
-                    return;
-                }
-                if (data.role === "red" && redJoined) {
-                    conn.send({ type: "error", msg: "红方已有人加入" });
-                    conn.close();
-                    return;
-                }
-
-                conn.clientRole = data.role;
                 if (data.role === "blue") blueJoined = true;
                 if (data.role === "red") redJoined = true;
-                if (data.role === "spectator") spectatorCount++;
-
-                updateRoomStatus();
-                conn.send({ type: "auth_ok", role: data.role });
-
-                console.log("   ✅ 认证成功！蓝方:", blueJoined, "红方:", redJoined);
-
+                dataChannel.send(JSON.stringify({ type: "auth_ok", role: data.role }));
                 if (!mainContainer.style.display || mainContainer.style.display === "none") {
                     enterMainUI();
                 }
-
-                if (blueJoined && redJoined) {
-                    roomMsg.innerText = "🎮 双方已就位，可以开始BP！";
-                }
             }
             break;
-
         case "auth_ok":
             myRole = data.role;
             myOriginalRole = data.role;
-            console.log("✅ 认证成功！我的角色:", myRole);
             enterMainUI();
-            roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
+            roomMsg.innerText = "已加入，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
             break;
-
         case "error":
             alert(data.msg);
-            roomMsg.innerText = data.msg;
             break;
-
         case "sync_state":
-            if (data.from !== myPeerId) {
+            if (myRole === "judge") {
+                receiveSync(data.state);
+                dataChannel.send(JSON.stringify(data));
+            } else {
                 receiveSync(data.state);
             }
-            if (myRole === "judge") {
-                broadcast(data, conn.peer);
-            }
             break;
-
         case "select":
-            if (data.from !== myPeerId) {
+            if (myRole === "judge") {
+                receiveSelection(data);
+                dataChannel.send(JSON.stringify(data));
+            } else {
                 receiveSelection(data);
             }
-            if (myRole === "judge") {
-                broadcast(data, conn.peer);
-            }
             break;
-
         case "start_bp":
             if (myRole !== "judge") startBPFromJudge(data);
             break;
-
         case "reset":
             if (myRole !== "judge") fullResetAllSeries();
             break;
     }
 }
 
-function updateRoomStatus() {
-    blueStatus.innerText = blueJoined ? "已就位" : "等待加入";
-    redStatus.innerText = redJoined ? "已就位" : "等待加入";
-    if (spectatorCountDom) spectatorCountDom.innerText = spectatorCount;
+function send(data) {
+    if (dataChannel && dataChannel.readyState === "open") {
+        dataChannel.send(JSON.stringify(data));
+    }
 }
 
-function broadcast(data, excludePeerId = null) {
-    Object.entries(connections).forEach(([peerId, conn]) => {
-        if (conn.open && peerId !== excludePeerId) {
-            conn.send(data);
-        }
-    });
-}
-
-// ====================== 换边逻辑 ======================
+// ====================== 换边 ======================
 function getCurrentRole() {
     if (myRole === "judge" || myRole === "spectator") return myRole;
     if (currentRound % 2 === 0) {
@@ -395,15 +304,11 @@ function updateSideByRound() {
     if (myRole === "judge" || myRole === "spectator") return;
     const currentRole = getCurrentRole();
     if (currentRole === "blue") {
-        blueCol.style.pointerEvents = "auto";
-        blueCol.style.opacity = "1";
-        redCol.style.pointerEvents = "none";
-        redCol.style.opacity = "0.6";
+        blueCol.style.pointerEvents = "auto"; blueCol.style.opacity = "1";
+        redCol.style.pointerEvents = "none"; redCol.style.opacity = "0.6";
     } else {
-        redCol.style.pointerEvents = "auto";
-        redCol.style.opacity = "1";
-        blueCol.style.pointerEvents = "none";
-        blueCol.style.opacity = "0.6";
+        redCol.style.pointerEvents = "auto"; redCol.style.opacity = "1";
+        blueCol.style.pointerEvents = "none"; blueCol.style.opacity = "0.6";
     }
 }
 
@@ -462,24 +367,20 @@ function findItemById(id, poolType) {
 }
 
 function syncState() {
-    broadcast({
-        type: "sync_state",
-        from: myPeerId,
-        state: {
-            matchType, currentRound, maxRound, globalUsedRoleIds,
-            battleStart, roleStep, skillStep,
-            usedRoleIds, usedSkillIds, bannedSkillIds,
-            blueRole, redRole, blueSupport, redSupport, supportPhase,
-            blueUsedSupportGlobal, redUsedSupportGlobal
-        }
-    });
+    send({ type: "sync_state", state: {
+        matchType, currentRound, maxRound, globalUsedRoleIds,
+        battleStart, roleStep, skillStep,
+        usedRoleIds, usedSkillIds, bannedSkillIds,
+        blueRole, redRole, blueSupport, redSupport, supportPhase,
+        blueUsedSupportGlobal, redUsedSupportGlobal
+    }});
 }
 
 function syncSelection(item, poolType) {
-    broadcast({ type: "select", from: myPeerId, itemId: item.id, poolType });
+    send({ type: "select", itemId: item.id, poolType });
 }
 
-// ====================== BP 变量 ======================
+// ====================== BP 变量和逻辑 ======================
 const ROLE_ORDER = ROLE_BP_ORDER;
 const SKILL_ORDER = SKILL_BP_ORDER;
 const ROLE_POOL = ROLE_LIST;
@@ -513,7 +414,6 @@ let blueRole = [], redRole = [], blueSupport = [], redSupport = [], supportPhase
 let timerVal = TIME_LIMIT, timerInterval = null;
 let lastBlueRoleCount = 0, lastRedRoleCount = 0;
 
-// ====================== BP 函数 ======================
 function clearTimer() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null; } }
 function playBanSound() { banAudio.currentTime = 0; banAudio.play().catch(() => {}); }
 function playPickSound() { pickAudio.currentTime = 0; pickAudio.play().catch(() => {}); }
@@ -539,13 +439,13 @@ function checkRoundComplete() {
 
 function getMainStage() {
     if (!matchType) return "等待选择BO3/BO5/BO7赛制";
-    if (checkRoundComplete()) return `第${currentRound}局全部BP完成，可开启下一局`;
+    if (checkRoundComplete()) return '第' + currentRound + '局全部BP完成';
     if (!battleStart) return "等待点击开启本局BP";
     if (roleStep < ROLE_ORDER.length) return "角色BP阶段";
     if (skillStep < SKILL_ORDER.length) return "贝壳能力BP阶段";
-    if (supportPhase === 1) return "援护阶段：红方选择4个援护（限时30秒）";
-    if (supportPhase === 2) return "援护阶段：蓝方选择4个援护（限时30秒）";
-    return `第${currentRound}局全部BP完成，可开启下一局`;
+    if (supportPhase === 1) return "红方选择援护";
+    if (supportPhase === 2) return "蓝方选择援护";
+    return '第' + currentRound + '局全部BP完成';
 }
 
 function getNowStep() {
@@ -553,8 +453,8 @@ function getNowStep() {
     const stage = getMainStage();
     if (stage === "角色BP阶段") return ROLE_ORDER[roleStep];
     if (stage === "贝壳能力BP阶段") return SKILL_ORDER[skillStep];
-    if (supportPhase === 1) return "点击援护池选择红方援护（不可重复）";
-    if (supportPhase === 2) return "点击援护池选择蓝方援护（不可重复）";
+    if (supportPhase === 1) return "红方选择援护";
+    if (supportPhase === 2) return "蓝方选择援护";
     return "";
 }
 
@@ -613,27 +513,26 @@ function renderPool() {
         if (used.includes(item.id)) div.classList.add("used");
         if (stage.includes("贝壳能力BP") && bannedSkillIds.includes(item.id)) div.classList.add("banned");
         if (preSelectItem && preSelectItem.id === item.id) div.classList.add("pre-select");
-        div.innerHTML = `<img src="img/${item.img}"><p>${item.name}</p>`;
+        div.innerHTML = '<img src="img/' + item.img + '"><p>' + item.name + '</p>';
         div.onclick = () => setPreSelect(item);
         poolBox.appendChild(div);
     });
 }
 
 function setPreSelect(item) {
-    if (!matchType) return alert("请先选择BO3/BO5/BO7赛制");
-    if (!battleStart) return alert("请点击【开启本轮对局BP】");
+    if (!matchType) return alert("请先选择赛制");
+    if (!battleStart) return alert("请点击开启BP");
     const stage = getMainStage();
     const all = [...blueRole.map(x => x.role.id), ...redRole.map(x => x.role.id)];
     if (stage.includes("角色BP")) { if (globalUsedRoleIds.includes(item.id) || usedRoleIds.includes(item.id)) return; }
     else if (stage.includes("贝壳能力BP")) { if (usedSkillIds.includes(item.id)) return; }
     else {
-        if (supportPhase === 1 && (redSupport.includes(item.id) || all.includes(item.id) || redUsedSupportGlobal.includes(item.id))) return alert("红方不可重复/不可选择出战英雄/本系列赛已选用过的援护");
-        if (supportPhase === 2 && (blueSupport.includes(item.id) || all.includes(item.id) || blueUsedSupportGlobal.includes(item.id))) return alert("蓝方不可重复/不可选择出战英雄/本系列赛已选用过的援护");
+        if (supportPhase === 1 && (redSupport.includes(item.id) || all.includes(item.id) || redUsedSupportGlobal.includes(item.id))) return;
+        if (supportPhase === 2 && (blueSupport.includes(item.id) || all.includes(item.id) || blueUsedSupportGlobal.includes(item.id))) return;
     }
     document.querySelectorAll('.pool-card.pre-select').forEach(card => card.classList.remove('pre-select'));
     preSelectItem = item;
-    const cards = document.querySelectorAll('.pool-card');
-    cards.forEach(card => {
+    poolBox.querySelectorAll('.pool-card').forEach(card => {
         if (card.querySelector('p') && card.querySelector('p').innerText === item.name && !card.classList.contains('used') && !card.classList.contains('banned')) {
             card.classList.add('pre-select');
         }
@@ -688,45 +587,25 @@ function executeSelect(item) {
     }
     if (myRole === "judge" || myRole === "spectator") return;
     executeSelectLocal(item);
-    const poolType = stage.includes("角色BP") ? "role" : stage.includes("贝壳能力BP") ? "skill" : "support";
-    syncSelection(item, poolType);
+    syncSelection(item, stage.includes("角色BP") ? "role" : stage.includes("贝壳能力BP") ? "skill" : "support");
     syncState();
 }
 
-function makeBanCard(data) { const d = document.createElement("div"); d.className = "ban-card"; d.innerHTML = `<img src="img/${data.img}"><p>${data.name}</p>`; return d; }
-function makeSupportCard(data) { const d = document.createElement("div"); d.className = "tl-card"; d.innerHTML = `<img src="img/${data.img}"><p>${data.name}</p>`; return d; }
+function makeBanCard(data) { const d = document.createElement("div"); d.className = "ban-card"; d.innerHTML = '<img src="img/' + data.img + '"><p>' + data.name + '</p>'; return d; }
+function makeSupportCard(data) { const d = document.createElement("div"); d.className = "tl-card"; d.innerHTML = '<img src="img/' + data.img + '"><p>' + data.name + '</p>'; return d; }
 
 function renderRoleList(wrap, arr, sideFlag) {
-    const existingCount = wrap.querySelectorAll('.nin-item').length;
-    const newCount = arr.length;
-    const hasNewItem = newCount > existingCount;
-    const newItemCount = newCount - existingCount;
     wrap.innerHTML = "";
     arr.forEach((obj, index) => {
         const item = document.createElement("div");
         item.className = "nin-item";
-        const isNew = hasNewItem && (index >= newCount - newItemCount);
-        if (isNew && sideFlag) item.classList.add("pick-enter");
         let skillHtml = "";
-        if (obj.skill) skillHtml = `<div class="book-sub"><img src="img/${obj.skill.img}"><p>${obj.skill.name}</p></div>`;
-        item.innerHTML = `<div class="nin-main"><img src="img/${obj.role.img}"><p>${obj.role.name}</p></div>${skillHtml}`;
+        if (obj.skill) skillHtml = '<div class="book-sub"><img src="img/' + obj.skill.img + '"><p>' + obj.skill.name + '</p></div>';
+        item.innerHTML = '<div class="nin-main"><img src="img/' + obj.role.img + '"><p>' + obj.role.name + '</p></div>' + skillHtml;
         wrap.appendChild(item);
-        if (isNew && sideFlag) {
-            requestAnimationFrame(() => requestAnimationFrame(() => {
-                item.classList.add("pick-enter-active");
-                item.addEventListener('animationend', function h(e) {
-                    if (e.animationName === 'pickAppear') {
-                        item.classList.remove("pick-enter", "pick-enter-active");
-                        item.classList.add("fresh-glow");
-                        item.addEventListener('animationend', function h2(e2) { if (e2.animationName === 'freshGlow') { item.classList.remove("fresh-glow"); item.removeEventListener('animationend', h2); } });
-                    }
-                    item.removeEventListener('animationend', h);
-                });
-            }));
-        }
     });
-    if (sideFlag === "blue") lastBlueRoleCount = newCount;
-    if (sideFlag === "red") lastRedRoleCount = newCount;
+    if (sideFlag === "blue") lastBlueRoleCount = arr.length;
+    if (sideFlag === "red") lastRedRoleCount = arr.length;
 }
 
 function renderSupport() {
@@ -751,7 +630,6 @@ function clearSingleRound() {
     preSelectItem = null; confirmSelectBtn.disabled = true;
     usedRoleIds = []; usedSkillIds = []; bannedSkillIds = [];
     blueRole = []; redRole = []; blueSupport = []; redSupport = [];
-    lastBlueRoleCount = 0; lastRedRoleCount = 0;
     blueRoleBanWrap.innerHTML = ""; redRoleBanWrap.innerHTML = "";
     bluePickWrap.innerHTML = ""; redPickWrap.innerHTML = "";
     blueSupportWrap.innerHTML = ""; redSupportWrap.innerHTML = "";
@@ -762,7 +640,6 @@ function fullResetAllSeries() {
     clearTimer();
     matchType = ""; maxRound = 0; currentRound = 0; globalUsedRoleIds = [];
     preSelectItem = null; confirmSelectBtn.disabled = true; matchSelect.value = "";
-    lastBlueRoleCount = 0; lastRedRoleCount = 0;
     blueUsedSupportGlobal = [];
     redUsedSupportGlobal = [];
     clearSingleRound();
@@ -770,26 +647,23 @@ function fullResetAllSeries() {
 
 startBtn.onclick = function () {
     if (myRole !== "judge") return alert("只有裁判可以开始BP！");
-    if (!blueJoined || !redJoined) return alert("双方未全部就位！");
-    if (!matchType) return alert("请先在上方选择BO3/BO5/BO7赛制！");
-    if (battleStart) return alert("当前对局BP正在进行中，无法重复开启");
-    if (currentRound > 0 && !checkRoundComplete()) return alert("上一局BP未全部完成（援护未选满4个），无法开启下一局");
-    if (currentRound >= maxRound) return alert(`已打完${maxRound}局，本轮系列赛结束，请点击【全部重置整轮系列赛】`);
+    if (!matchType) return alert("请先选择赛制！");
+    if (battleStart) return alert("当前BP进行中！");
+    if (currentRound >= maxRound) return alert('已打完，请重置');
     clearSingleRound();
     currentRound++;
     battleStart = true;
     updateSideByRound();
     refreshAll();
     startTimer();
-    broadcast({ type: "start_bp", state: { matchType, maxRound } });
+    send({ type: "start_bp", state: { matchType, maxRound } });
     syncState();
 };
 
 resetAllBtn.onclick = function () {
     if (myRole !== "judge") return alert("只有裁判可以重置！");
-    if (!confirm("确定要重置整轮系列赛吗？此操作不可撤销。")) return;
     fullResetAllSeries();
-    broadcast({ type: "reset" });
+    send({ type: "reset" });
     syncState();
 };
 
@@ -808,7 +682,7 @@ function startBPFromJudge(data) {
 confirmSelectBtn.onclick = function () { if (preSelectItem) executeSelect(preSelectItem); };
 
 matchSelect.onchange = function () {
-    if (myRole !== "judge") { this.value = matchType || ""; return alert("只有裁判可以切换赛制！"); }
+    if (myRole !== "judge") { this.value = matchType || ""; return; }
     const val = this.value;
     if (val === "bo3") { matchType = "bo3"; maxRound = 3; }
     else if (val === "bo5") { matchType = "bo5"; maxRound = 5; }
@@ -823,11 +697,5 @@ const poolTitleEl = document.getElementById("poolTitle");
 const originRefresh = refreshAll;
 refreshAll = function () {
     originRefresh();
-    const opText = getNowStep();
-    poolTitleEl.innerText = opText === "无" ? "" : opText;
-    stepText.className = ""; poolTitleEl.className = "";
-    let cls = "op-normal";
-    if (opText.includes("蓝")) cls = "op-blue";
-    if (opText.includes("红")) cls = "op-red";
-    stepText.classList.add(cls); poolTitleEl.classList.add(cls);
+    poolTitleEl.innerText = getNowStep() === "无" ? "" : getNowStep();
 };
