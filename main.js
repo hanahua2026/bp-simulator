@@ -92,14 +92,15 @@ confirmCreateBtn.onclick = () => {
     const pw = document.getElementById("createPassword").value.trim();
     if (!pw) return alert("请设置房间密码");
     roomPassword = pw;
-    roomId = "room-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    // 生成一个更好记的房间ID
+    roomId = "hanabp-" + Date.now().toString(36).slice(-4) + Math.random().toString(36).slice(2, 5);
     myRole = "judge";
     displayRoomId.innerText = roomId;
     displayPassword.innerText = roomPassword;
     roomInfo.style.display = "block";
     createForm.style.display = "none";
     initPeer(roomId);
-    roomMsg.innerText = "房间已创建，等待双方加入...";
+    roomMsg.innerText = "房间已创建，等待双方加入...\n房间ID已显示在上方，请分享给对方";
 };
 
 confirmJoinBtn.onclick = () => {
@@ -113,62 +114,162 @@ confirmJoinBtn.onclick = () => {
     myOriginalRole = selectedJoinRole;
     joinForm.style.display = "none";
     roomInfo.style.display = "none";
-    initPeer("client-" + Date.now().toString(36));
+    // 加入者使用随机ID，连接到裁判的 roomId
+    initPeer("hanabp-client-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     roomMsg.innerText = "正在连接房间...";
 };
 
-// ====================== PeerJS ======================
+// ====================== PeerJS（增强版 ICE 配置）======================
 function initPeer(id) {
+    // 使用 Metered.ca 的免费 TURN 服务器（每天有免费额度，足够使用）
+    // 这个 TURN 服务器可以在 STUN 穿透失败时进行中继
     peer = new Peer(id, {
-        debug: 0,
+        debug: 1, // 开启调试日志，方便排查（正式上线可改回0）
         host: '0.peerjs.com',
         port: 443,
         secure: true,
         path: '/',
         config: {
             iceServers: [
+                // Google 免费 STUN
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                // Metered.ca 免费 TURN（需要注册获取，或者使用下面的公开 TURN）
+                // 以下是 OpenRelay 提供的免费 TURN 服务器
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ],
+            iceCandidatePoolSize: 10,
+            iceTransportPolicy: 'all' // 允许使用 TURN 中继
         }
     });
+
     peer.on("open", (pid) => {
         myPeerId = pid;
         console.log("Peer 已启动:", pid);
-        if (myRole !== "judge") connectToJudge();
+        console.log("我的角色:", myRole);
+        if (myRole !== "judge") {
+            console.log("正在连接到裁判房间:", roomId);
+            // 稍微延迟确保信令服务器完全就绪
+            setTimeout(() => connectToJudge(), 500);
+        }
     });
-    peer.on("connection", (conn) => handleConnection(conn));
+
+    peer.on("connection", (conn) => {
+        console.log("收到连接请求，来自:", conn.peer);
+        handleConnection(conn);
+    });
+
     peer.on("error", (err) => {
         console.error("Peer 错误:", err);
-        roomMsg.innerText = "连接错误：" + err.message;
+        let msg = "连接错误：";
+        if (err.type === "peer-unavailable") {
+            msg += "房间不存在或裁判已离线";
+        } else if (err.type === "network") {
+            msg += "网络连接失败，请检查网络";
+        } else if (err.type === "webrtc") {
+            msg += "WebRTC连接失败，可能网络不兼容";
+        } else {
+            msg += err.message;
+        }
+        roomMsg.innerText = msg;
     });
+
     peer.on("disconnected", () => {
-        console.log("断开连接，尝试重连...");
-        peer.reconnect();
+        console.log("信令服务器断开，尝试重连...");
+        roomMsg.innerText = "连接断开，正在重连...";
+        if (peer && !peer.destroyed) {
+            peer.reconnect();
+        }
+    });
+
+    peer.on("close", () => {
+        console.log("Peer 连接关闭");
+        roomMsg.innerText = "连接已关闭";
     });
 }
 
 function connectToJudge() {
-    const conn = peer.connect(roomId, { reliable: true });
-    handleConnection(conn);
+    console.log("尝试连接到:", roomId);
+    try {
+        const conn = peer.connect(roomId, {
+            reliable: true,
+            serialization: 'json'
+        });
+        handleConnection(conn);
+
+        // 设置连接超时
+        const timeout = setTimeout(() => {
+            if (!conn.open) {
+                roomMsg.innerText = "连接超时！请检查：\n1. 房间ID是否正确\n2. 裁判是否在线\n3. 双方网络是否通畅\n\n提示：可以尝试使用手机热点";
+                console.error("连接超时");
+            }
+        }, 15000);
+
+        conn.on("open", () => {
+            clearTimeout(timeout);
+            console.log("连接已建立:", conn.peer);
+        });
+    } catch (e) {
+        console.error("连接失败:", e);
+        roomMsg.innerText = "连接失败：" + e.message;
+    }
 }
 
 function handleConnection(conn) {
     conn.on("open", () => {
+        console.log("数据通道已打开:", conn.peer);
         connections[conn.peer] = conn;
+        // 发送认证信息
         conn.send({ type: "auth", role: myRole, password: roomPassword });
     });
-    conn.on("data", (data) => handleData(data, conn));
+
+    conn.on("data", (data) => {
+        console.log("收到数据:", data.type, "来自:", conn.peer);
+        handleData(data, conn);
+    });
+
     conn.on("close", () => {
+        console.log("连接关闭:", conn.peer);
         if (conn.clientRole === "spectator") {
             spectatorCount = Math.max(0, spectatorCount - 1);
             updateRoomStatus();
         }
+        if (conn.clientRole === "blue") {
+            blueJoined = false;
+            updateRoomStatus();
+        }
+        if (conn.clientRole === "red") {
+            redJoined = false;
+            updateRoomStatus();
+        }
         delete connections[conn.peer];
+    });
+
+    conn.on("error", (err) => {
+        console.error("连接错误:", err);
+        roomMsg.innerText = "数据通道错误：" + err.message;
     });
 }
 
 function handleData(data, conn) {
+    console.log("处理数据:", data.type, "角色:", myRole);
     switch (data.type) {
         case "auth":
             if (myRole === "judge") {
@@ -194,8 +295,13 @@ function handleData(data, conn) {
                 if (data.role === "spectator") spectatorCount++;
                 updateRoomStatus();
                 conn.send({ type: "auth_ok", role: data.role });
-                if (!mainContainer.style.display || mainContainer.style.display === "none") enterMainUI();
-                if (blueJoined && redJoined) roomMsg.innerText = "双方已就位，可以开始BP！";
+                if (!mainContainer.style.display || mainContainer.style.display === "none") {
+                    enterMainUI();
+                }
+                if (blueJoined && redJoined) {
+                    roomMsg.innerText = "双方已就位，可以开始BP！";
+                }
+                console.log("当前状态 - 蓝方:", blueJoined, "红方:", redJoined, "观众:", spectatorCount);
             }
             break;
         case "auth_ok":
@@ -203,6 +309,7 @@ function handleData(data, conn) {
             myOriginalRole = data.role;
             enterMainUI();
             roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
+            console.log("认证成功，角色:", myRole);
             break;
         case "error":
             alert(data.msg);
@@ -213,7 +320,7 @@ function handleData(data, conn) {
                 receiveSync(data.state);
             }
             if (myRole === "judge") {
-                broadcast(data);
+                broadcast(data, conn.peer);
             }
             break;
         case "select":
@@ -221,7 +328,7 @@ function handleData(data, conn) {
                 receiveSelection(data);
             }
             if (myRole === "judge") {
-                broadcast(data);
+                broadcast(data, conn.peer);
             }
             break;
         case "start_bp":
@@ -239,8 +346,12 @@ function updateRoomStatus() {
     if (spectatorCountDom) spectatorCountDom.innerText = spectatorCount;
 }
 
-function broadcast(data) {
-    Object.values(connections).forEach(conn => { if (conn.open) conn.send(data); });
+function broadcast(data, excludePeerId = null) {
+    Object.entries(connections).forEach(([peerId, conn]) => {
+        if (conn.open && peerId !== excludePeerId) {
+            conn.send(data);
+        }
+    });
 }
 
 // ====================== 换边逻辑 ======================
