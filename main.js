@@ -92,15 +92,13 @@ confirmCreateBtn.onclick = () => {
     const pw = document.getElementById("createPassword").value.trim();
     if (!pw) return alert("请设置房间密码");
     roomPassword = pw;
-    // 生成一个更好记的房间ID
-    roomId = "hanabp-" + Date.now().toString(36).slice(-4) + Math.random().toString(36).slice(2, 5);
     myRole = "judge";
-    displayRoomId.innerText = roomId;
     displayPassword.innerText = roomPassword;
     roomInfo.style.display = "block";
     createForm.style.display = "none";
-    initPeer(roomId);
-    roomMsg.innerText = "房间已创建，等待双方加入...\n房间ID已显示在上方，请分享给对方";
+    roomMsg.innerText = "正在创建房间，请稍候...";
+    // 传入 null，让 PeerJS 自动生成 ID
+    initPeer(null);
 };
 
 confirmJoinBtn.onclick = () => {
@@ -114,31 +112,26 @@ confirmJoinBtn.onclick = () => {
     myOriginalRole = selectedJoinRole;
     joinForm.style.display = "none";
     roomInfo.style.display = "none";
-    // 加入者使用随机ID，连接到裁判的 roomId
+    // 加入者使用随机ID
     initPeer("hanabp-client-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     roomMsg.innerText = "正在连接房间...";
 };
 
-// ====================== PeerJS（增强版 ICE 配置）======================
+// ====================== PeerJS ======================
 function initPeer(id) {
-    // 使用 Metered.ca 的免费 TURN 服务器（每天有免费额度，足够使用）
-    // 这个 TURN 服务器可以在 STUN 穿透失败时进行中继
     peer = new Peer(id, {
-        debug: 1, // 开启调试日志，方便排查（正式上线可改回0）
+        debug: 1,
         host: '0.peerjs.com',
         port: 443,
         secure: true,
         path: '/',
         config: {
             iceServers: [
-                // Google 免费 STUN
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
                 { urls: 'stun:stun4.l.google.com:19302' },
-                // Metered.ca 免费 TURN（需要注册获取，或者使用下面的公开 TURN）
-                // 以下是 OpenRelay 提供的免费 TURN 服务器
                 {
                     urls: 'turn:openrelay.metered.ca:80',
                     username: 'openrelayproject',
@@ -155,18 +148,25 @@ function initPeer(id) {
                     credential: 'openrelayproject'
                 }
             ],
-            iceCandidatePoolSize: 10,
-            iceTransportPolicy: 'all' // 允许使用 TURN 中继
+            iceCandidatePoolSize: 10
         }
     });
 
     peer.on("open", (pid) => {
         myPeerId = pid;
-        console.log("Peer 已启动:", pid);
+        console.log("Peer 已启动，ID:", pid);
         console.log("我的角色:", myRole);
+
+        // 如果是裁判且 roomId 还没设置，使用自动生成的 ID
+        if (myRole === "judge" && !roomId) {
+            roomId = pid;
+            displayRoomId.innerText = roomId;
+            roomMsg.innerText = "房间已创建！请将房间ID和密码发给对方。";
+            console.log("房间ID:", roomId, "密码:", roomPassword);
+        }
+
         if (myRole !== "judge") {
             console.log("正在连接到裁判房间:", roomId);
-            // 稍微延迟确保信令服务器完全就绪
             setTimeout(() => connectToJudge(), 500);
         }
     });
@@ -185,6 +185,8 @@ function initPeer(id) {
             msg += "网络连接失败，请检查网络";
         } else if (err.type === "webrtc") {
             msg += "WebRTC连接失败，可能网络不兼容";
+        } else if (err.type === "unavailable-id") {
+            msg += "此ID已被占用，请重新创建房间";
         } else {
             msg += err.message;
         }
@@ -217,8 +219,8 @@ function connectToJudge() {
         // 设置连接超时
         const timeout = setTimeout(() => {
             if (!conn.open) {
-                roomMsg.innerText = "连接超时！请检查：\n1. 房间ID是否正确\n2. 裁判是否在线\n3. 双方网络是否通畅\n\n提示：可以尝试使用手机热点";
-                console.error("连接超时");
+                roomMsg.innerText = "连接超时！请检查：\n1. 房间ID是否正确\n2. 裁判是否在线\n3. 双方网络是否通畅";
+                console.error("连接超时，房间ID:", roomId);
             }
         }, 15000);
 
@@ -236,7 +238,6 @@ function handleConnection(conn) {
     conn.on("open", () => {
         console.log("数据通道已打开:", conn.peer);
         connections[conn.peer] = conn;
-        // 发送认证信息
         conn.send({ type: "auth", role: myRole, password: roomPassword });
     });
 
@@ -263,13 +264,13 @@ function handleConnection(conn) {
     });
 
     conn.on("error", (err) => {
-        console.error("连接错误:", err);
+        console.error("数据通道错误:", err);
         roomMsg.innerText = "数据通道错误：" + err.message;
     });
 }
 
 function handleData(data, conn) {
-    console.log("处理数据:", data.type, "角色:", myRole);
+    console.log("处理数据:", data.type, "当前角色:", myRole);
     switch (data.type) {
         case "auth":
             if (myRole === "judge") {
