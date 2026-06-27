@@ -93,7 +93,7 @@ confirmCreateBtn.onclick = () => {
     const pw = document.getElementById("createPassword").value.trim();
     if (!pw) return alert("请设置房间密码");
     roomPassword = pw;
-    roomId = "hanabp-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    roomId = "bp" + Date.now().toString(36).slice(-6) + Math.random().toString(36).slice(2, 6);
     myRole = "judge";
     displayRoomId.innerText = roomId;
     displayPassword.innerText = roomPassword;
@@ -114,14 +114,14 @@ confirmJoinBtn.onclick = () => {
     myOriginalRole = selectedJoinRole;
     joinForm.style.display = "none";
     roomInfo.style.display = "none";
-    initPeer("client-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6));
+    initPeer("c" + Date.now().toString(36).slice(-6) + Math.random().toString(36).slice(2, 6));
     roomMsg.innerText = "正在连接房间...";
 };
 
 // ====================== PeerJS ======================
 function initPeer(id) {
     console.log("初始化 Peer，ID:", id);
-    
+
     peer = new Peer(id, {
         debug: 2,
         host: '0.peerjs.com',
@@ -157,7 +157,7 @@ function initPeer(id) {
         console.log("✅ Peer 已启动！实际ID:", pid);
         console.log("   我的角色:", myRole);
         console.log("   房间ID:", roomId);
-        
+
         if (myRole === "judge") {
             roomMsg.innerText = "房间已就绪！\n房间ID: " + roomId + "\n密码: " + roomPassword;
         } else {
@@ -212,16 +212,16 @@ function connectToJudge() {
         return;
     }
     connectingToJudge = true;
-    
+
     console.log("🔗 开始连接到房间:", roomId);
-    
+
     const conn = peer.connect(roomId, {
         reliable: true
     });
-    
+
     console.log("   连接对象已创建");
     handleConnection(conn);
-    
+
     let connectionTimeout = setTimeout(() => {
         if (!conn.open) {
             roomMsg.innerText = "❌ 连接超时！\n可能原因：\n1. 房间ID错误\n2. 裁判已关闭页面\n3. 网络不通\n\n请尝试刷新页面重试";
@@ -229,13 +229,13 @@ function connectToJudge() {
             connectingToJudge = false;
         }
     }, 30000);
-    
+
     conn.on("open", () => {
         clearTimeout(connectionTimeout);
         connectingToJudge = false;
         console.log("✅ 数据通道已建立！");
     });
-    
+
     conn.on("error", () => {
         connectingToJudge = false;
     });
@@ -246,10 +246,10 @@ function handleConnection(conn) {
         console.log("📦 数据通道打开:", conn.peer);
         connections[conn.peer] = conn;
         console.log("   发送认证信息，角色:", myRole);
-        conn.send({ 
-            type: "auth", 
-            role: myRole, 
-            password: roomPassword 
+        conn.send({
+            type: "auth",
+            role: myRole,
+            password: roomPassword
         });
     });
 
@@ -282,7 +282,7 @@ function handleConnection(conn) {
 
 function handleData(data, conn) {
     console.log("📋 处理数据:", data.type, "| 我是:", myRole);
-    
+
     switch (data.type) {
         case "auth":
             if (myRole === "judge") {
@@ -293,9 +293,9 @@ function handleData(data, conn) {
                     conn.close();
                     return;
                 }
-                
+
                 console.log("   角色:", data.role);
-                
+
                 if (data.role === "blue" && blueJoined) {
                     conn.send({ type: "error", msg: "蓝方已有人加入" });
                     conn.close();
@@ -306,27 +306,27 @@ function handleData(data, conn) {
                     conn.close();
                     return;
                 }
-                
+
                 conn.clientRole = data.role;
                 if (data.role === "blue") blueJoined = true;
                 if (data.role === "red") redJoined = true;
                 if (data.role === "spectator") spectatorCount++;
-                
+
                 updateRoomStatus();
                 conn.send({ type: "auth_ok", role: data.role });
-                
+
                 console.log("   ✅ 认证成功！蓝方:", blueJoined, "红方:", redJoined);
-                
+
                 if (!mainContainer.style.display || mainContainer.style.display === "none") {
                     enterMainUI();
                 }
-                
+
                 if (blueJoined && redJoined) {
                     roomMsg.innerText = "🎮 双方已就位，可以开始BP！";
                 }
             }
             break;
-            
+
         case "auth_ok":
             myRole = data.role;
             myOriginalRole = data.role;
@@ -334,12 +334,12 @@ function handleData(data, conn) {
             enterMainUI();
             roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
             break;
-            
+
         case "error":
             alert(data.msg);
             roomMsg.innerText = data.msg;
             break;
-            
+
         case "sync_state":
             if (data.from !== myPeerId) {
                 receiveSync(data.state);
@@ -348,7 +348,7 @@ function handleData(data, conn) {
                 broadcast(data, conn.peer);
             }
             break;
-            
+
         case "select":
             if (data.from !== myPeerId) {
                 receiveSelection(data);
@@ -357,11 +357,11 @@ function handleData(data, conn) {
                 broadcast(data, conn.peer);
             }
             break;
-            
+
         case "start_bp":
             if (myRole !== "judge") startBPFromJudge(data);
             break;
-            
+
         case "reset":
             if (myRole !== "judge") fullResetAllSeries();
             break;
