@@ -121,14 +121,13 @@ confirmJoinBtn.onclick = () => {
 function initPeer(id) {
     peer = new Peer(id, {
         debug: 0,
-        host: 'peerjs.ydg.workers.dev',
-        port: 443,
-        secure: true,
-        path: '/',
         config: {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' }
             ]
         }
     });
@@ -178,7 +177,6 @@ function handleData(data, conn) {
                     return;
                 }
                 if (data.role === "spectator") {
-                    // 观众不限
                 } else if (data.role === "blue" && blueJoined) {
                     conn.send({ type: "error", msg: "蓝方已有人加入" });
                     conn.close();
