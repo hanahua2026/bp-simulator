@@ -177,14 +177,14 @@ function handleBugoutData(data, address) {
                 if (blueJoined && redJoined) roomMsg.innerText = "双方已就位，可以开始BP！";
             }
             break;
-        case "auth_ok":
-            if (myRole !== "judge") {
-                myRole = data.role;
-                myOriginalRole = data.role;
-                enterMainUI();
-                roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
-            }
-            break;
+            case "auth_ok":
+    console.log("收到 auth_ok, 当前myRole:", myRole, "data.role:", data.role);
+    myRole = data.role;
+    myOriginalRole = data.role;
+    console.log("准备进入主界面, myRole:", myRole);
+    enterMainUI();
+    roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
+    break;
         case "sync_state":
             if (data.from !== myPeerId) {
                 receiveSync(data.state);
