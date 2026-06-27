@@ -121,7 +121,7 @@ confirmJoinBtn.onclick = () => {
 function initPeer(id) {
     peer = new Peer(id, {
         debug: 0,
-        host: 'peerjs-server-production.up.railway.app',
+        host: 'peerjs.herokuapp.com',
         port: 443,
         secure: true,
         path: '/',
