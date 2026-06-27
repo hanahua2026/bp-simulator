@@ -2,13 +2,13 @@
 let myRole = "";
 let myOriginalRole = "";
 let myPeerId = "";
-let peer = null;
-let connections = {};
+let b = null;
 let roomId = "";
 let roomPassword = "";
 let blueJoined = false;
 let redJoined = false;
 let spectatorCount = 0;
+let connections = {};
 
 const roomPanel = document.getElementById("roomPanel");
 const mainContainer = document.getElementById("mainContainer");
@@ -92,13 +92,13 @@ confirmCreateBtn.onclick = () => {
     const pw = document.getElementById("createPassword").value.trim();
     if (!pw) return alert("请设置房间密码");
     roomPassword = pw;
-    roomId = "room-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    roomId = "hana-bp-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     myRole = "judge";
     displayRoomId.innerText = roomId;
     displayPassword.innerText = roomPassword;
     roomInfo.style.display = "block";
     createForm.style.display = "none";
-    initPeer(roomId);
+    initBugout(roomId);
     roomMsg.innerText = "房间已创建，等待双方加入...";
 };
 
@@ -113,87 +113,75 @@ confirmJoinBtn.onclick = () => {
     myOriginalRole = selectedJoinRole;
     joinForm.style.display = "none";
     roomInfo.style.display = "none";
-    initPeer("client-" + Date.now().toString(36));
+    initBugout(roomId);
     roomMsg.innerText = "正在连接房间...";
 };
 
-// ====================== PeerJS ======================
-function initPeer(id) {
-    peer = new Peer(id, {
-        debug: 0,
-        host: 'peerjs.herokuapp.com',
-        port: 443,
-        secure: true,
-        path: '/',
-        config: {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
+// ====================== Bugout P2P ======================
+function initBugout(room) {
+    b = new Bugout(room);
+
+    b.on("seen", (address) => {
+        const addrStr = address;
+        connections[addrStr] = true;
+        console.log("连接成功:", addrStr);
+        if (myRole !== "judge") {
+            b.send(JSON.stringify({ type: "auth", role: myRole, password: roomPassword }));
+        } else {
+            roomMsg.innerText = "有新连接加入";
         }
     });
-    peer.on("open", (pid) => {
-        myPeerId = pid;
-        console.log("Peer 已启动:", pid);
-        if (myRole !== "judge") connectToJudge();
+
+    b.on("message", (address, msg) => {
+        try {
+            const data = JSON.parse(msg);
+            data._from = address;
+            handleBugoutData(data, address);
+        } catch (e) {}
     });
-    peer.on("connection", (conn) => handleConnection(conn));
-    peer.on("error", (err) => {
-        console.error("Peer 错误:", err);
-        roomMsg.innerText = "连接错误：" + err.message;
+
+    b.on("left", (address) => {
+        delete connections[address];
     });
-    peer.on("disconnected", () => {
-        console.log("断开连接，尝试重连...");
-        peer.reconnect();
-    });
+
+    myPeerId = b.address();
+
+    if (myRole !== "judge") {
+        // 主动尝试连接
+        setTimeout(() => {
+            if (Object.keys(connections).length === 0) {
+                roomMsg.innerText = "连接中... 请确保双方网络通畅";
+            }
+        }, 5000);
+    }
 }
 
-function connectToJudge() {
-    const conn = peer.connect(roomId, { reliable: true });
-    handleConnection(conn);
+function broadcastBugout(data) {
+    b.send(JSON.stringify(data));
 }
 
-function handleConnection(conn) {
-    conn.on("open", () => {
-        connections[conn.peer] = conn;
-        conn.send({ type: "auth", role: myRole, password: roomPassword });
-    });
-    conn.on("data", (data) => handleData(data, conn));
-    conn.on("close", () => {
-        if (conn.clientRole === "spectator") {
-            spectatorCount = Math.max(0, spectatorCount - 1);
-            updateRoomStatus();
-        }
-        delete connections[conn.peer];
-    });
-}
-
-function handleData(data, conn) {
+function handleBugoutData(data, address) {
     switch (data.type) {
         case "auth":
             if (myRole === "judge") {
                 if (data.password !== roomPassword) {
-                    conn.send({ type: "error", msg: "密码错误" });
-                    conn.close();
+                    roomMsg.innerText = "有人输入错误密码被拒绝";
                     return;
                 }
                 if (data.role === "spectator") {
-                    // 观众不限人数
+                    // 观众不限
                 } else if (data.role === "blue" && blueJoined) {
-                    conn.send({ type: "error", msg: "蓝方已有人加入" });
-                    conn.close();
+                    roomMsg.innerText = "蓝方已有人，拒绝新连接";
                     return;
                 } else if (data.role === "red" && redJoined) {
-                    conn.send({ type: "error", msg: "红方已有人加入" });
-                    conn.close();
+                    roomMsg.innerText = "红方已有人，拒绝新连接";
                     return;
                 }
-                conn.clientRole = data.role;
                 if (data.role === "blue") blueJoined = true;
                 if (data.role === "red") redJoined = true;
                 if (data.role === "spectator") spectatorCount++;
                 updateRoomStatus();
-                conn.send({ type: "auth_ok", role: data.role });
+                broadcastBugout({ type: "auth_ok", role: data.role });
                 if (!mainContainer.style.display || mainContainer.style.display === "none") enterMainUI();
                 if (blueJoined && redJoined) roomMsg.innerText = "双方已就位，可以开始BP！";
             }
@@ -204,16 +192,12 @@ function handleData(data, conn) {
             enterMainUI();
             roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
             break;
-        case "error":
-            alert(data.msg);
-            roomMsg.innerText = data.msg;
-            break;
         case "sync_state":
             if (data.from !== myPeerId) {
                 receiveSync(data.state);
             }
             if (myRole === "judge") {
-                broadcast(data);
+                broadcastBugout(data);
             }
             break;
         case "select":
@@ -221,7 +205,7 @@ function handleData(data, conn) {
                 receiveSelection(data);
             }
             if (myRole === "judge") {
-                broadcast(data);
+                broadcastBugout(data);
             }
             break;
         case "start_bp":
@@ -240,7 +224,7 @@ function updateRoomStatus() {
 }
 
 function broadcast(data) {
-    Object.values(connections).forEach(conn => { if (conn.open) conn.send(data); });
+    broadcastBugout(data);
 }
 
 // ====================== 换边逻辑 ======================
