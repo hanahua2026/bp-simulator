@@ -9,6 +9,7 @@ let roomPassword = "";
 let blueJoined = false;
 let redJoined = false;
 let spectatorCount = 0;
+let connectingToJudge = false;
 
 const roomPanel = document.getElementById("roomPanel");
 const mainContainer = document.getElementById("mainContainer");
@@ -92,7 +93,6 @@ confirmCreateBtn.onclick = () => {
     const pw = document.getElementById("createPassword").value.trim();
     if (!pw) return alert("请设置房间密码");
     roomPassword = pw;
-    // 生成带时间戳的唯一房间ID
     roomId = "hanabp-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
     myRole = "judge";
     displayRoomId.innerText = roomId;
@@ -114,7 +114,6 @@ confirmJoinBtn.onclick = () => {
     myOriginalRole = selectedJoinRole;
     joinForm.style.display = "none";
     roomInfo.style.display = "none";
-    // 加入者也用带时间戳的ID
     initPeer("client-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6));
     roomMsg.innerText = "正在连接房间...";
 };
@@ -131,20 +130,24 @@ function initPeer(id) {
         path: '/',
         config: {
             iceServers: [
+                { urls: 'stun:stun.qq.com:3478' },
+                { urls: 'stun:stun.miwifi.com:3478' },
+                { urls: 'stun:stun.voipbuster.com:3478' },
+                { urls: 'stun:stun.voiparound.com:3478' },
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
                 {
-                    urls: 'turn:openrelay.metered.ca:80',
+                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
                     username: 'openrelayproject',
                     credential: 'openrelayproject'
                 },
                 {
-                    urls: 'turn:openrelay.metered.ca:443',
-                    username: 'openrelayproject',
-                    credential: 'openrelayproject'
+                    urls: 'turn:global.turn.twilio.com:3478?transport=tcp',
+                    username: 'f4b4035eaa76f4a55de5f4351567653ee4ff6fa97b50b6b334fcc1be9c27212d',
+                    credential: 'w1W4GgkTFp7j6tHTNQkL9HJiLpU+W/oPQRJ2CqCQdBs='
                 }
             ],
             iceCandidatePoolSize: 5,
+            iceTransportPolicy: 'all',
             sdpSemantics: 'unified-plan'
         }
     });
@@ -204,6 +207,12 @@ function initPeer(id) {
 }
 
 function connectToJudge() {
+    if (connectingToJudge) {
+        console.log("⚠️ 正在连接中，跳过重复连接");
+        return;
+    }
+    connectingToJudge = true;
+    
     console.log("🔗 开始连接到房间:", roomId);
     
     const conn = peer.connect(roomId, {
@@ -213,17 +222,22 @@ function connectToJudge() {
     console.log("   连接对象已创建");
     handleConnection(conn);
     
-    // 超时检测
     let connectionTimeout = setTimeout(() => {
         if (!conn.open) {
-            roomMsg.innerText = "❌ 连接超时！\n可能原因：\n1. 房间ID错误\n2. 裁判已关闭页面\n3. 网络不通";
+            roomMsg.innerText = "❌ 连接超时！\n可能原因：\n1. 房间ID错误\n2. 裁判已关闭页面\n3. 网络不通\n\n请尝试刷新页面重试";
             console.error("⏰ 连接超时");
+            connectingToJudge = false;
         }
-    }, 20000);
+    }, 30000);
     
     conn.on("open", () => {
         clearTimeout(connectionTimeout);
+        connectingToJudge = false;
         console.log("✅ 数据通道已建立！");
+    });
+    
+    conn.on("error", () => {
+        connectingToJudge = false;
     });
 }
 
