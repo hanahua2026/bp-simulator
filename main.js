@@ -119,16 +119,17 @@ confirmJoinBtn.onclick = () => {
 
 // ====================== Bugout P2P ======================
 function initBugout(room) {
-    b = new Bugout(room);
+    b = new Bugout(room, {
+        announce: ["wss://tracker.openwebtorrent.com", "wss://tracker.btorrent.xyz"]
+    });
 
     b.on("seen", (address) => {
         const addrStr = address;
         connections[addrStr] = true;
         console.log("连接成功:", addrStr);
+        myPeerId = b.address();
         if (myRole !== "judge") {
             b.send(JSON.stringify({ type: "auth", role: myRole, password: roomPassword }));
-        } else {
-            roomMsg.innerText = "有新连接加入";
         }
     });
 
@@ -145,15 +146,6 @@ function initBugout(room) {
     });
 
     myPeerId = b.address();
-
-    if (myRole !== "judge") {
-        // 主动尝试连接
-        setTimeout(() => {
-            if (Object.keys(connections).length === 0) {
-                roomMsg.innerText = "连接中... 请确保双方网络通畅";
-            }
-        }, 5000);
-    }
 }
 
 function broadcastBugout(data) {
