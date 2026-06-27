@@ -2,7 +2,8 @@
 let myRole = "";
 let myOriginalRole = "";
 let myPeerId = "";
-let b = null;
+let peer = null;
+let connections = {};
 let roomId = "";
 let roomPassword = "";
 let blueJoined = false;
@@ -97,7 +98,7 @@ confirmCreateBtn.onclick = () => {
     displayPassword.innerText = roomPassword;
     roomInfo.style.display = "block";
     createForm.style.display = "none";
-    initBugout(roomId);
+    initPeer(roomId);
     roomMsg.innerText = "房间已创建，等待双方加入...";
 };
 
@@ -112,81 +113,107 @@ confirmJoinBtn.onclick = () => {
     myOriginalRole = selectedJoinRole;
     joinForm.style.display = "none";
     roomInfo.style.display = "none";
-    initBugout(roomId);
+    initPeer("client-" + Date.now().toString(36));
     roomMsg.innerText = "正在连接房间...";
 };
 
-// ====================== Bugout P2P ======================
-function initBugout(room) {
-    b = new Bugout(room);
-
-    b.on("connections", (count) => {
-        console.log("连接数:", count);
+// ====================== PeerJS ======================
+function initPeer(id) {
+    peer = new Peer(id, {
+        debug: 0,
+        host: 'peerjs.ydg.workers.dev',
+        port: 443,
+        secure: true,
+        path: '/',
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        }
     });
-
-    b.on("rpc", (address, data) => {
-        try {
-            const msg = JSON.parse(data);
-            msg._from = address;
-            handleBugoutData(msg, address);
-        } catch (e) {}
+    peer.on("open", (pid) => {
+        myPeerId = pid;
+        console.log("Peer 已启动:", pid);
+        if (myRole !== "judge") connectToJudge();
     });
-
-    myPeerId = b.address();
-    console.log("Bugout 启动, address:", myPeerId);
-
-    if (myRole !== "judge") {
-        const authInterval = setInterval(() => {
-            b.rpc(JSON.stringify({ type: "auth", role: myRole, password: roomPassword }));
-        }, 2000);
-        setTimeout(() => clearInterval(authInterval), 60000);
-    }
+    peer.on("connection", (conn) => handleConnection(conn));
+    peer.on("error", (err) => {
+        console.error("Peer 错误:", err);
+        roomMsg.innerText = "连接错误：" + err.message;
+    });
+    peer.on("disconnected", () => {
+        console.log("断开连接，尝试重连...");
+        peer.reconnect();
+    });
 }
 
-function broadcastBugout(data) {
-    b.rpc(JSON.stringify(data));
+function connectToJudge() {
+    const conn = peer.connect(roomId, { reliable: true });
+    handleConnection(conn);
 }
 
-function handleBugoutData(data, address) {
+function handleConnection(conn) {
+    conn.on("open", () => {
+        connections[conn.peer] = conn;
+        conn.send({ type: "auth", role: myRole, password: roomPassword });
+    });
+    conn.on("data", (data) => handleData(data, conn));
+    conn.on("close", () => {
+        if (conn.clientRole === "spectator") {
+            spectatorCount = Math.max(0, spectatorCount - 1);
+            updateRoomStatus();
+        }
+        delete connections[conn.peer];
+    });
+}
+
+function handleData(data, conn) {
     switch (data.type) {
         case "auth":
             if (myRole === "judge") {
                 if (data.password !== roomPassword) {
-                    roomMsg.innerText = "有人输入错误密码被拒绝";
+                    conn.send({ type: "error", msg: "密码错误" });
+                    conn.close();
                     return;
                 }
                 if (data.role === "spectator") {
                     // 观众不限
                 } else if (data.role === "blue" && blueJoined) {
-                    roomMsg.innerText = "蓝方已有人，拒绝新连接";
+                    conn.send({ type: "error", msg: "蓝方已有人加入" });
+                    conn.close();
                     return;
                 } else if (data.role === "red" && redJoined) {
-                    roomMsg.innerText = "红方已有人，拒绝新连接";
+                    conn.send({ type: "error", msg: "红方已有人加入" });
+                    conn.close();
                     return;
                 }
+                conn.clientRole = data.role;
                 if (data.role === "blue") blueJoined = true;
                 if (data.role === "red") redJoined = true;
                 if (data.role === "spectator") spectatorCount++;
                 updateRoomStatus();
-                broadcastBugout({ type: "auth_ok", role: data.role });
-                if (mainContainer.style.display === "none" || !mainContainer.style.display) enterMainUI();
+                conn.send({ type: "auth_ok", role: data.role });
+                if (!mainContainer.style.display || mainContainer.style.display === "none") enterMainUI();
                 if (blueJoined && redJoined) roomMsg.innerText = "双方已就位，可以开始BP！";
             }
             break;
         case "auth_ok":
-            console.log("收到 auth_ok, 当前myRole:", myRole, "data.role:", data.role);
             myRole = data.role;
             myOriginalRole = data.role;
-            console.log("准备进入主界面, myRole:", myRole);
             enterMainUI();
             roomMsg.innerText = "已加入房间，身份：" + (myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
+            break;
+        case "error":
+            alert(data.msg);
+            roomMsg.innerText = data.msg;
             break;
         case "sync_state":
             if (data.from !== myPeerId) {
                 receiveSync(data.state);
             }
             if (myRole === "judge") {
-                broadcastBugout(data);
+                broadcast(data);
             }
             break;
         case "select":
@@ -194,7 +221,7 @@ function handleBugoutData(data, address) {
                 receiveSelection(data);
             }
             if (myRole === "judge") {
-                broadcastBugout(data);
+                broadcast(data);
             }
             break;
         case "start_bp":
@@ -213,7 +240,7 @@ function updateRoomStatus() {
 }
 
 function broadcast(data) {
-    broadcastBugout(data);
+    Object.values(connections).forEach(conn => { if (conn.open) conn.send(data); });
 }
 
 // ====================== 换边逻辑 ======================
@@ -242,7 +269,6 @@ function updateSideByRound() {
 }
 
 function enterMainUI() {
-    console.log("enterMainUI called, role:", myRole);
     roomPanel.style.display = "none";
     mainContainer.style.display = "block";
     roleDisplay.innerText = "身份：" + (myRole === "judge" ? "裁判" : myRole === "blue" ? "蓝方" : myRole === "red" ? "红方" : "观众");
